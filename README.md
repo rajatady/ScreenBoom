@@ -4,9 +4,11 @@
 
 <h1 align="center">Screenboom</h1>
 
-<p align="center"><strong>Make your screen recordings look professional. Native macOS, zero dependencies, fully open source.</strong></p>
+<p align="center"><strong>The native, free, and open-source alternative to Screen Studio for macOS.</strong></p>
 
-Record your screen with QuickTime or Cmd+Shift+5, import the MP4 into Screenboom, add a gradient background, padding, rounded corners, and drop shadow — export a polished video that looks like it came out of Screen Studio. No subscriptions, no watermarks, no Electron.
+<p align="center">Make your screen recordings look professional — gradient backgrounds, padding, rounded corners, drop shadow, timeline editing, smooth speed ramping — all from a lightweight native macOS app. No subscriptions, no watermarks, no Electron.</p>
+
+Record your screen with QuickTime or Cmd+Shift+5, import the MP4 into Screenboom, polish it, and export. That's it.
 
 Built with Swift 6.2, SwiftUI, and AVFoundation. ~700 lines of rendering pipeline. Ships as a single native binary.
 
