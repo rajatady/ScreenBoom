@@ -13,6 +13,9 @@ xcuserdata/
 # JetBrains
 .idea/
 
+# Project context (internal)
+.context/
+
 # macOS
 .DS_Store
 *.swp

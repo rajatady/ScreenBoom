@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".context/icon.png" alt="Screenboom" width="128" height="128">
+  <img src="assets/icon.png" alt="Screenboom" width="128" height="128">
 </p>
 
 <h1 align="center">Screenboom</h1>
