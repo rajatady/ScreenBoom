@@ -14,7 +14,7 @@ Built with Swift 6.2, SwiftUI, and AVFoundation. ~700 lines of rendering pipelin
 
 ## Why Screenboom?
 
-Screen Studio costs $89. It's great software, but not everyone can or wants to pay for it. OpenScreen exists but runs on Electron. If you're on a Mac and want something native, lightweight, and fast — this is it.
+Screen Studio costs $89. It's great software, but not everyone can or wants to pay for it. If you're on a Mac and want something native, lightweight, and fast — this is it.
 
 Screenboom is a native macOS app. No web views, no bundled Chromium, no 300MB download. It uses the same AVFoundation and CoreImage pipeline that Apple's own tools use. Your GPU does the work.
 
