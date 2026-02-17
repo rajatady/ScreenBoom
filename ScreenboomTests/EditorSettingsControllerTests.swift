@@ -183,4 +183,66 @@ struct EditorSettingsControllerTests {
         #expect(project.outputWidth == 1920)
         #expect(project.outputHeight == 1080)
     }
+
+    // MARK: - Background Type
+
+    @Test func setBackgroundTypeSolidUpdatesProject() {
+        let project = makeProject()
+        let controller = makeController(project: project)
+
+        let solidColor = CodableColor(red: 0.5, green: 0.3, blue: 0.1)
+        controller.setBackgroundType(.solid(solidColor))
+
+        if case .solid(let c) = project.backgroundStyle {
+            #expect(abs(c.red - 0.5) < 0.01)
+        } else {
+            Issue.record("Expected .solid background type")
+        }
+    }
+
+    @Test func setFrameStyleBorderUpdatesProject() {
+        let project = makeProject()
+        let controller = makeController(project: project)
+
+        let borderColor = CodableColor(red: 1, green: 0, blue: 0)
+        controller.setFrameStyle(.border(width: 3, color: borderColor))
+
+        if case .border(let w, let c) = project.frameStyle {
+            #expect(w == 3)
+            #expect(abs(c.red - 1.0) < 0.01)
+        } else {
+            Issue.record("Expected .border frame style")
+        }
+    }
+
+    @Test func legacyGradientColorsWorkWithBackgroundStyle() {
+        let project = makeProject()
+        // Default is .gradient — verify backward compat accessors work
+        let c1 = project.gradientColor1
+        let ns1 = NSColor(c1).usingColorSpace(.sRGB)!
+        // Default dark gradient: (0.08, 0.08, 0.12)
+        #expect(abs(ns1.redComponent - 0.08) < 0.02)
+
+        // Setting via accessor should update backgroundStyle
+        project.gradientColor1 = Color(red: 0.5, green: 0.5, blue: 0.5)
+        if case .gradient(let gc1, _) = project.backgroundStyle {
+            #expect(abs(gc1.red - 0.5) < 0.02)
+        } else {
+            Issue.record("Setting gradientColor1 should maintain .gradient type")
+        }
+    }
+
+    @Test func backgroundTypeSelectionMatchesCurrentStyle() {
+        let project = makeProject()
+        let controller = makeController(project: project)
+
+        // Default is gradient
+        #expect(controller.backgroundTypeSelection == .gradient)
+
+        project.backgroundStyle = .solid(CodableColor(red: 0.5, green: 0.5, blue: 0.5))
+        #expect(controller.backgroundTypeSelection == .solid)
+
+        project.backgroundStyle = .wallpaper("Sunset")
+        #expect(controller.backgroundTypeSelection == .wallpaper)
+    }
 }

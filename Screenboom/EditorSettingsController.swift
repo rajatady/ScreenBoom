@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Editor Tab
 
@@ -40,6 +41,26 @@ enum EditorTab: String, CaseIterable, Identifiable {
         default: false
         }
     }
+}
+
+// MARK: - Background Type Picker
+
+enum BackgroundTypeSelection: String, CaseIterable {
+    case solid = "Solid"
+    case gradient = "Gradient"
+    case mesh = "Mesh"
+    case wallpaper = "Wallpaper"
+    case image = "Image"
+}
+
+// MARK: - Frame Style Selection
+
+enum FrameStyleSelection: String, CaseIterable {
+    case none = "None"
+    case border = "Border"
+    case glow = "Glow"
+    case browser = "Browser"
+    case window = "Window"
 }
 
 // MARK: - EditorSettingsController
@@ -88,7 +109,32 @@ final class EditorSettingsController {
         selectedZoomRegion != nil || selectedSegment != nil
     }
 
-    // MARK: - Background Presets
+    var backgroundStyle: BackgroundType { project.backgroundStyle }
+    var frameStyle: FrameStyle { project.frameStyle }
+
+    // MARK: - Background Type Selection
+
+    var backgroundTypeSelection: BackgroundTypeSelection {
+        switch project.backgroundStyle {
+        case .solid: .solid
+        case .gradient: .gradient
+        case .mesh: .mesh
+        case .wallpaper: .wallpaper
+        case .image: .image
+        }
+    }
+
+    var frameStyleSelection: FrameStyleSelection {
+        switch project.frameStyle {
+        case .none: .none
+        case .border, .gradientBorder: .border
+        case .neonGlow: .glow
+        case .browserChrome: .browser
+        case .macOSWindow: .window
+        }
+    }
+
+    // MARK: - Background Presets (legacy gradient presets)
 
     static let backgroundPresets: [(name: String, color1: Color, color2: Color)] = [
         ("Dark", Color(red: 0.08, green: 0.08, blue: 0.12), Color(red: 0.18, green: 0.12, blue: 0.28)),
@@ -97,18 +143,17 @@ final class EditorSettingsController {
     ]
 
     var currentPreset: String? {
+        guard case .gradient(let gc1, let gc2) = project.backgroundStyle else { return nil }
         for preset in Self.backgroundPresets {
-            let nc1 = NSColor(project.gradientColor1).usingColorSpace(.sRGB)
-            let nc2 = NSColor(project.gradientColor2).usingColorSpace(.sRGB)
             let pc1 = NSColor(preset.color1).usingColorSpace(.sRGB)
             let pc2 = NSColor(preset.color2).usingColorSpace(.sRGB)
-            if let nc1, let nc2, let pc1, let pc2,
-               abs(nc1.redComponent - pc1.redComponent) < 0.02,
-               abs(nc1.greenComponent - pc1.greenComponent) < 0.02,
-               abs(nc1.blueComponent - pc1.blueComponent) < 0.02,
-               abs(nc2.redComponent - pc2.redComponent) < 0.02,
-               abs(nc2.greenComponent - pc2.greenComponent) < 0.02,
-               abs(nc2.blueComponent - pc2.blueComponent) < 0.02 {
+            if let pc1, let pc2,
+               abs(gc1.red - pc1.redComponent) < 0.02,
+               abs(gc1.green - pc1.greenComponent) < 0.02,
+               abs(gc1.blue - pc1.blueComponent) < 0.02,
+               abs(gc2.red - pc2.redComponent) < 0.02,
+               abs(gc2.green - pc2.greenComponent) < 0.02,
+               abs(gc2.blue - pc2.blueComponent) < 0.02 {
                 return preset.name
             }
         }
@@ -119,9 +164,89 @@ final class EditorSettingsController {
 
     func applyPreset(_ name: String) {
         guard let preset = Self.backgroundPresets.first(where: { $0.name == name }) else { return }
-        project.gradientColor1 = preset.color1
-        project.gradientColor2 = preset.color2
+        project.backgroundStyle = .gradient(CodableColor(swiftUI: preset.color1), CodableColor(swiftUI: preset.color2))
         project.updateVisuals()
+    }
+
+    func setBackgroundType(_ style: BackgroundType) {
+        project.backgroundStyle = style
+        project.updateVisuals()
+    }
+
+    func setBackgroundTypeSelection(_ selection: BackgroundTypeSelection) {
+        switch selection {
+        case .solid:
+            // Convert current to solid using first gradient color or default
+            if case .gradient(let c1, _) = project.backgroundStyle {
+                project.backgroundStyle = .solid(c1)
+            } else {
+                project.backgroundStyle = .solid(CodableColor(red: 0.1, green: 0.1, blue: 0.12))
+            }
+        case .gradient:
+            if case .gradient = project.backgroundStyle { return }
+            project.backgroundStyle = .defaultStyle
+        case .mesh:
+            if case .mesh = project.backgroundStyle { return }
+            project.backgroundStyle = .mesh(
+                topLeft: CodableColor(red: 0.08, green: 0.08, blue: 0.20),
+                topRight: CodableColor(red: 0.20, green: 0.08, blue: 0.30),
+                bottomLeft: CodableColor(red: 0.05, green: 0.15, blue: 0.15),
+                bottomRight: CodableColor(red: 0.15, green: 0.10, blue: 0.25)
+            )
+        case .wallpaper:
+            if case .wallpaper = project.backgroundStyle { return }
+            project.backgroundStyle = .wallpaper("Sunset")
+        case .image:
+            if case .image = project.backgroundStyle { return }
+            // Will need to import — set to solid as placeholder until import
+            break
+        }
+        project.updateVisuals()
+    }
+
+    func setFrameStyle(_ style: FrameStyle) {
+        project.frameStyle = style
+        project.updateVisuals()
+    }
+
+    func setFrameStyleSelection(_ selection: FrameStyleSelection) {
+        switch selection {
+        case .none:
+            project.frameStyle = .none
+        case .border:
+            if case .border = project.frameStyle { return }
+            project.frameStyle = .border(width: 2, color: CodableColor(red: 1, green: 1, blue: 1, alpha: 0.2))
+        case .glow:
+            if case .neonGlow = project.frameStyle { return }
+            project.frameStyle = .neonGlow(color: CodableColor(red: 1.0, green: 0.35, blue: 0.37), radius: 12)
+        case .browser:
+            project.frameStyle = .browserChrome
+        case .window:
+            project.frameStyle = .macOSWindow
+        }
+        project.updateVisuals()
+    }
+
+    func selectWallpaper(_ name: String) {
+        project.backgroundStyle = .wallpaper(name)
+        project.updateVisuals()
+    }
+
+    func importBackgroundImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            // Create bookmark data for persistence
+            if let bookmarkData = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                self.project.backgroundStyle = .image(bookmarkData)
+                self.project.updateVisuals()
+            } else if let bookmarkData = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                self.project.backgroundStyle = .image(bookmarkData)
+                self.project.updateVisuals()
+            }
+        }
     }
 
     func setCursorEnabled(_ enabled: Bool) {
@@ -215,6 +340,114 @@ final class EditorSettingsController {
         )
     }
 
+    func solidColorBinding() -> Binding<Color> {
+        Binding(
+            get: { [weak project] in
+                guard let project else { return .black }
+                if case .solid(let c) = project.backgroundStyle { return c.toColor() }
+                return .black
+            },
+            set: { [weak project] in
+                project?.backgroundStyle = .solid(CodableColor(swiftUI: $0))
+                project?.updateVisuals()
+            }
+        )
+    }
+
+    func meshColorBinding(corner: MeshCorner) -> Binding<Color> {
+        Binding(
+            get: { [weak project] in
+                guard let project, case .mesh(let tl, let tr, let bl, let br) = project.backgroundStyle else { return .black }
+                switch corner {
+                case .topLeft: return tl.toColor()
+                case .topRight: return tr.toColor()
+                case .bottomLeft: return bl.toColor()
+                case .bottomRight: return br.toColor()
+                }
+            },
+            set: { [weak project] newColor in
+                guard let project, case .mesh(var tl, var tr, var bl, var br) = project.backgroundStyle else { return }
+                let cc = CodableColor(swiftUI: newColor)
+                switch corner {
+                case .topLeft: tl = cc
+                case .topRight: tr = cc
+                case .bottomLeft: bl = cc
+                case .bottomRight: br = cc
+                }
+                project.backgroundStyle = .mesh(topLeft: tl, topRight: tr, bottomLeft: bl, bottomRight: br)
+                project.updateVisuals()
+            }
+        )
+    }
+
+    func borderWidthBinding() -> Binding<CGFloat> {
+        Binding(
+            get: { [weak project] in
+                guard let project else { return 2 }
+                if case .border(let w, _) = project.frameStyle { return w }
+                return 2
+            },
+            set: { [weak project] in
+                guard let project else { return }
+                if case .border(_, let c) = project.frameStyle {
+                    project.frameStyle = .border(width: $0, color: c)
+                    project.updateVisuals()
+                }
+            }
+        )
+    }
+
+    func borderColorBinding() -> Binding<Color> {
+        Binding(
+            get: { [weak project] in
+                guard let project else { return .white }
+                if case .border(_, let c) = project.frameStyle { return c.toColor() }
+                return .white
+            },
+            set: { [weak project] in
+                guard let project else { return }
+                if case .border(let w, _) = project.frameStyle {
+                    project.frameStyle = .border(width: w, color: CodableColor(swiftUI: $0))
+                    project.updateVisuals()
+                }
+            }
+        )
+    }
+
+    func glowColorBinding() -> Binding<Color> {
+        Binding(
+            get: { [weak project] in
+                guard let project else { return SB.Colors.accent }
+                if case .neonGlow(let c, _) = project.frameStyle { return c.toColor() }
+                return SB.Colors.accent
+            },
+            set: { [weak project] in
+                guard let project else { return }
+                if case .neonGlow(_, let r) = project.frameStyle {
+                    project.frameStyle = .neonGlow(color: CodableColor(swiftUI: $0), radius: r)
+                    project.updateVisuals()
+                }
+            }
+        )
+    }
+
+    func glowRadiusBinding() -> Binding<CGFloat> {
+        Binding(
+            get: { [weak project] in
+                guard let project else { return 12 }
+                if case .neonGlow(_, let r) = project.frameStyle { return r }
+                return 12
+            },
+            set: { [weak project] in
+                guard let project else { return }
+                if case .neonGlow(let c, _) = project.frameStyle {
+                    project.frameStyle = .neonGlow(color: c, radius: $0)
+                    project.updateVisuals()
+                }
+            }
+        )
+    }
+
     func paddingBinding() -> Binding<CGFloat> {
         Binding(
             get: { [weak project] in project?.padding ?? 60 },
@@ -261,4 +494,10 @@ final class EditorSettingsController {
             set: { [weak project] in project?.cursorSettings.autoZoomLevel = $0 }
         )
     }
+}
+
+// MARK: - Mesh Corner
+
+enum MeshCorner {
+    case topLeft, topRight, bottomLeft, bottomRight
 }

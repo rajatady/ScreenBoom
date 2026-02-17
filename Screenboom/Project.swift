@@ -23,6 +23,10 @@ struct SavedState: Codable {
     var playheadTime: Double
     var showThumbnails: Bool?
 
+    // Background & frame (optional for backward compat — nil = legacy gradient)
+    var backgroundStyleJSON: Data?
+    var frameStyleJSON: Data?
+
     // Cursor settings (all optional for backward compatibility)
     var cursorEnabled: Bool?
     var cursorStyle: String?
@@ -94,8 +98,54 @@ final class Project {
     var segments: [Segment] = []
     var selectedSegmentId: UUID?
 
-    var gradientColor1: Color = Color(red: 0.08, green: 0.08, blue: 0.12)
-    var gradientColor2: Color = Color(red: 0.18, green: 0.12, blue: 0.28)
+    var backgroundStyle: BackgroundType = .defaultStyle {
+        didSet { _cachedBackgroundImage = nil }
+    }
+    var frameStyle: FrameStyle = .none
+
+    // Background CIImage cache — mesh/wallpaper are expensive (CPU pixel loop).
+    // Only recompute when backgroundStyle actually changes.
+    private var _cachedBackgroundImage: CIImage?
+    private var _cachedBackgroundSize: CGSize = .zero
+
+    private func cachedBackgroundImage(for size: CGSize) -> CIImage {
+        if let cached = _cachedBackgroundImage, _cachedBackgroundSize == size {
+            return cached
+        }
+        let image = FrameRenderer.createBackground(style: backgroundStyle, size: size)
+        _cachedBackgroundImage = image
+        _cachedBackgroundSize = size
+        return image
+    }
+
+    // Backward-compat computed accessors for gradient colors
+    var gradientColor1: Color {
+        get {
+            if case .gradient(let c1, _) = backgroundStyle { return c1.toColor() }
+            return Color(red: 0.08, green: 0.08, blue: 0.12)
+        }
+        set {
+            if case .gradient(_, let c2) = backgroundStyle {
+                backgroundStyle = .gradient(CodableColor(swiftUI: newValue), c2)
+            } else {
+                backgroundStyle = .gradient(CodableColor(swiftUI: newValue), CodableColor(red: 0.18, green: 0.12, blue: 0.28))
+            }
+        }
+    }
+    var gradientColor2: Color {
+        get {
+            if case .gradient(_, let c2) = backgroundStyle { return c2.toColor() }
+            return Color(red: 0.18, green: 0.12, blue: 0.28)
+        }
+        set {
+            if case .gradient(let c1, _) = backgroundStyle {
+                backgroundStyle = .gradient(c1, CodableColor(swiftUI: newValue))
+            } else {
+                backgroundStyle = .gradient(CodableColor(red: 0.08, green: 0.08, blue: 0.12), CodableColor(swiftUI: newValue))
+            }
+        }
+    }
+
     var padding: CGFloat = 60
     var cornerRadius: CGFloat = 16
     var shadowRadius: CGFloat = 30
@@ -239,8 +289,8 @@ final class Project {
         let cornerRadius: CGFloat
         let shadowRadius: CGFloat
         let shadowOpacity: CGFloat
-        let color1: [Double]  // [r, g, b]
-        let color2: [Double]
+        let backgroundStyle: BackgroundType
+        let frameStyle: FrameStyle
         let outputWidth: CGFloat
         let outputHeight: CGFloat
         let showThumbnails: Bool
@@ -262,8 +312,6 @@ final class Project {
     var canRedo: Bool { !redoStack.isEmpty }
 
     private func captureSnapshot() -> EditingSnapshot {
-        let ns1 = NSColor(gradientColor1).usingColorSpace(.sRGB) ?? NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
-        let ns2 = NSColor(gradientColor2).usingColorSpace(.sRGB) ?? NSColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 1)
         return EditingSnapshot(
             splitPoints: splitPoints,
             segments: segments.map { ($0.startTime, $0.endTime, $0.speed, $0.isEnabled) },
@@ -271,8 +319,8 @@ final class Project {
             cornerRadius: cornerRadius,
             shadowRadius: shadowRadius,
             shadowOpacity: shadowOpacity,
-            color1: [ns1.redComponent, ns1.greenComponent, ns1.blueComponent],
-            color2: [ns2.redComponent, ns2.greenComponent, ns2.blueComponent],
+            backgroundStyle: backgroundStyle,
+            frameStyle: frameStyle,
             outputWidth: outputWidth,
             outputHeight: outputHeight,
             showThumbnails: showThumbnails,
@@ -321,12 +369,8 @@ final class Project {
         cornerRadius = snapshot.cornerRadius
         shadowRadius = snapshot.shadowRadius
         shadowOpacity = snapshot.shadowOpacity
-        gradientColor1 = Color(red: snapshot.color1[safe: 0] ?? 0.08,
-                               green: snapshot.color1[safe: 1] ?? 0.08,
-                               blue: snapshot.color1[safe: 2] ?? 0.12)
-        gradientColor2 = Color(red: snapshot.color2[safe: 0] ?? 0.18,
-                               green: snapshot.color2[safe: 1] ?? 0.12,
-                               blue: snapshot.color2[safe: 2] ?? 0.28)
+        backgroundStyle = snapshot.backgroundStyle
+        frameStyle = snapshot.frameStyle
         outputWidth = snapshot.outputWidth
         outputHeight = snapshot.outputHeight
         showThumbnails = snapshot.showThumbnails
@@ -416,8 +460,20 @@ final class Project {
             logger.warning("writeStateNow: bookmark=\(bookmark != nil), path=\(url.path)")
         }
 
-        let nsColor1 = NSColor(gradientColor1).usingColorSpace(.sRGB) ?? NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
-        let nsColor2 = NSColor(gradientColor2).usingColorSpace(.sRGB) ?? NSColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 1)
+        // Encode background/frame styles as JSON
+        let bgJSON = try? JSONEncoder().encode(backgroundStyle)
+        let frameJSON = try? JSONEncoder().encode(frameStyle)
+
+        // Legacy gradient colors for downgrade compat
+        let nsColor1: NSColor
+        let nsColor2: NSColor
+        if case .gradient(let c1, let c2) = backgroundStyle {
+            nsColor1 = c1.toNSColor().usingColorSpace(.sRGB) ?? NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
+            nsColor2 = c2.toNSColor().usingColorSpace(.sRGB) ?? NSColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 1)
+        } else {
+            nsColor1 = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
+            nsColor2 = NSColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 1)
+        }
 
         let savedZoomRegions: [SavedState.SavedZoomRegion]? = zoomRegions.isEmpty ? nil : zoomRegions.map {
             SavedState.SavedZoomRegion(
@@ -448,6 +504,8 @@ final class Project {
             outputHeight: Double(outputHeight),
             playheadTime: playheadTime,
             showThumbnails: showThumbnails,
+            backgroundStyleJSON: bgJSON,
+            frameStyleJSON: frameJSON,
             cursorEnabled: cursorSettings.isEnabled,
             cursorStyle: cursorSettings.style.rawValue,
             cursorSize: Double(cursorSettings.size),
@@ -478,13 +536,27 @@ final class Project {
         }
         logger.warning("loadProject: state loaded, bookmark exists: \(state.sourceURLBookmark != nil)")
 
-        // Restore visual settings
-        gradientColor1 = Color(red: state.gradientColor1[safe: 0] ?? 0.08,
-                               green: state.gradientColor1[safe: 1] ?? 0.08,
-                               blue: state.gradientColor1[safe: 2] ?? 0.12)
-        gradientColor2 = Color(red: state.gradientColor2[safe: 0] ?? 0.18,
-                               green: state.gradientColor2[safe: 1] ?? 0.12,
-                               blue: state.gradientColor2[safe: 2] ?? 0.28)
+        // Restore visual settings — new style fields take priority, fall back to legacy gradient arrays
+        if let bgData = state.backgroundStyleJSON,
+           let bg = try? JSONDecoder().decode(BackgroundType.self, from: bgData) {
+            backgroundStyle = bg
+        } else {
+            // Migration from legacy gradient colors
+            backgroundStyle = .gradient(
+                CodableColor(red: state.gradientColor1[safe: 0] ?? 0.08,
+                             green: state.gradientColor1[safe: 1] ?? 0.08,
+                             blue: state.gradientColor1[safe: 2] ?? 0.12),
+                CodableColor(red: state.gradientColor2[safe: 0] ?? 0.18,
+                             green: state.gradientColor2[safe: 1] ?? 0.12,
+                             blue: state.gradientColor2[safe: 2] ?? 0.28)
+            )
+        }
+        if let frameData = state.frameStyleJSON,
+           let frame = try? JSONDecoder().decode(FrameStyle.self, from: frameData) {
+            frameStyle = frame
+        } else {
+            frameStyle = .none
+        }
         padding = CGFloat(state.padding)
         cornerRadius = CGFloat(state.cornerRadius)
         shadowRadius = CGFloat(state.shadowRadius)
@@ -711,6 +783,8 @@ final class Project {
         recordingSession = nil
         cursorMetadata = nil
         cursorOverlayState = nil
+        backgroundStyle = .defaultStyle
+        frameStyle = .none
         cursorSettings = CursorSettings()
         zoomRegions = []
         selectedZoomRegionID = nil
@@ -1023,11 +1097,13 @@ final class Project {
             boundaryObserver = nil
         }
 
+        let bgImage = cachedBackgroundImage(for: previewSettings.outputSize)
         let videoComp = FrameRenderer.makeVideoComposition(
             for: asset,
             sourceSize: videoSize,
             settings: previewSettings,
-            cursorOverlayState: cursorOverlayState
+            cursorOverlayState: cursorOverlayState,
+            cachedBackgroundImage: bgImage
         )
 
         let item = AVPlayerItem(asset: asset)
@@ -1095,11 +1171,13 @@ final class Project {
 
     func updateVisuals() {
         guard let asset else { return }
+        let bgImage = cachedBackgroundImage(for: previewSettings.outputSize)
         let videoComp = FrameRenderer.makeVideoComposition(
             for: asset,
             sourceSize: videoSize,
             settings: previewSettings,
-            cursorOverlayState: cursorOverlayState
+            cursorOverlayState: cursorOverlayState,
+            cachedBackgroundImage: bgImage
         )
         playerItem?.videoComposition = videoComp
         // Force re-render current frame when paused so preview reflects changes immediately
@@ -1117,8 +1195,8 @@ final class Project {
             cornerRadius: cornerRadius,
             shadowRadius: shadowRadius,
             shadowOpacity: shadowOpacity,
-            gradientColor1: NSColor(gradientColor1),
-            gradientColor2: NSColor(gradientColor2),
+            backgroundStyle: backgroundStyle,
+            frameStyle: frameStyle,
             outputSize: CGSize(width: 3840, height: 2160)
         )
     }
@@ -1130,8 +1208,8 @@ final class Project {
             cornerRadius: cornerRadius,
             shadowRadius: shadowRadius,
             shadowOpacity: shadowOpacity,
-            gradientColor1: NSColor(gradientColor1),
-            gradientColor2: NSColor(gradientColor2),
+            backgroundStyle: backgroundStyle,
+            frameStyle: frameStyle,
             outputSize: CGSize(width: outputWidth, height: outputHeight)
         )
     }

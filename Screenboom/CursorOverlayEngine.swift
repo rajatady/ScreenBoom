@@ -311,13 +311,17 @@ enum CursorOverlayEngine {
         // Re-sample smoothed points at composition time
         // Walk the remap entries and for each composition time, look up source time,
         // then look up cursor position at that source time
-        let remappedPoints: [SmoothedCursorPoint] = remapTable.entries.map { entry in
+        var remappedPoints: [SmoothedCursorPoint] = remapTable.entries.map { entry in
             let sourceT = entry.sourceTime
             if let pos = lookupPosition(in: state.smoothedPoints, at: sourceT) {
                 return SmoothedCursorPoint(timestamp: entry.compositionTime, x: pos.x, y: pos.y)
             }
             return SmoothedCursorPoint(timestamp: entry.compositionTime, x: 0, y: 0)
         }
+
+        // Cursor interpolation bridging: detect source-time jumps at disabled segment boundaries
+        // and inject smoothstep bridge points so the cursor doesn't teleport
+        remappedPoints = injectCursorBridges(remappedPoints: remappedPoints, remapTable: remapTable)
 
         // Remap clicks
         let remappedClicks: [CursorClick] = state.clicks.compactMap { click in
@@ -343,6 +347,64 @@ enum CursorOverlayEngine {
             settings: state.settings,
             zoomKeyframes: remappedZoom
         )
+    }
+
+    // MARK: - Cursor Bridge Injection
+
+    /// Detects source-time discontinuities in the remap table (disabled segment gaps)
+    /// and injects smoothstep-interpolated bridge points so the cursor smoothly transitions
+    /// instead of teleporting.
+    nonisolated static func injectCursorBridges(
+        remappedPoints: [SmoothedCursorPoint],
+        remapTable: TimeRemapTable
+    ) -> [SmoothedCursorPoint] {
+        guard remappedPoints.count >= 2 else { return remappedPoints }
+
+        let bridgeCount = 12
+        let bridgeDuration = 0.2  // seconds of composition time for the bridge
+
+        var result = remappedPoints
+        var bridges: [SmoothedCursorPoint] = []
+
+        // Scan the remap table for source-time discontinuities
+        for i in 1..<remapTable.entries.count {
+            let prev = remapTable.entries[i - 1]
+            let curr = remapTable.entries[i]
+
+            let sourceJump = abs(curr.sourceTime - prev.sourceTime)
+            let compDelta = curr.compositionTime - prev.compositionTime
+
+            // A jump: large source-time gap but tiny composition-time gap
+            // This happens at disabled segment boundaries in the composition
+            if sourceJump > 0.5 && compDelta < 0.1 && compDelta > 0.0001 {
+                // Find positions just before and after the jump
+                let posA = lookupPosition(in: remappedPoints, at: prev.compositionTime)
+                let posB = lookupPosition(in: remappedPoints, at: curr.compositionTime)
+
+                guard let posA, let posB else { continue }
+
+                // Generate bridge points with smoothstep easing
+                let bridgeStart = prev.compositionTime
+                let bridgeEnd = min(prev.compositionTime + bridgeDuration,
+                                    curr.compositionTime + bridgeDuration / 2)
+
+                for j in 0..<bridgeCount {
+                    let t = Double(j + 1) / Double(bridgeCount + 1)
+                    let eased = t * t * (3.0 - 2.0 * t)  // smoothstep
+                    let timestamp = bridgeStart + t * (bridgeEnd - bridgeStart)
+                    let x = posA.x + eased * (posB.x - posA.x)
+                    let y = posA.y + eased * (posB.y - posA.y)
+                    bridges.append(SmoothedCursorPoint(timestamp: timestamp, x: x, y: y))
+                }
+            }
+        }
+
+        if !bridges.isEmpty {
+            result.append(contentsOf: bridges)
+            result.sort { $0.timestamp < $1.timestamp }
+        }
+
+        return result
     }
 
     // MARK: - Catmull-Rom Smoothing

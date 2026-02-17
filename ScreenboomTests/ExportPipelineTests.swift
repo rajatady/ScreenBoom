@@ -213,6 +213,44 @@ struct ExportPipelineTests {
         #expect(abs(exportedDuration - expectedDuration) < 0.3, "Exported video should be ~\(expectedDuration)s at 4x, got \(exportedDuration)s")
     }
 
+    @Test func exportWithSolidBackgroundAndBrowserChrome() async throws {
+        // Export with non-default background + frame style → valid MP4
+        let videoURL = try await Self.generateTestVideo(duration: 4.0)
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("export-test-\(UUID().uuidString).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: videoURL)
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+
+        let asset = AVURLAsset(url: videoURL)
+        let sourceSize = CGSize(width: 320, height: 240)
+        let segments = [
+            Segment(startTime: 0, endTime: 4, speed: 1.0, isEnabled: true)
+        ]
+        let composition = CompositionEngine.buildComposition(asset: asset, segments: segments)
+        let videoComp = FrameRenderer.makeVideoComposition(
+            for: composition,
+            sourceSize: sourceSize,
+            settings: FrameRenderer.Settings(
+                padding: 40, cornerRadius: 12, shadowRadius: 20, shadowOpacity: 0.4,
+                backgroundStyle: .solid(CodableColor(red: 0.1, green: 0.1, blue: 0.2)),
+                frameStyle: .browserChrome,
+                outputSize: sourceSize
+            )
+        )
+
+        try await CompositionEngine.export(
+            composition: composition,
+            videoComposition: videoComp,
+            outputSize: sourceSize,
+            to: outputURL,
+            progress: { _ in }
+        )
+
+        let exportedDuration = try await Self.videoDuration(at: outputURL)
+        #expect(abs(exportedDuration - 4.0) < 0.3, "Exported video should be ~4s, got \(exportedDuration)s")
+    }
+
     @Test func exportCombinedDisabledAndSpeed() async throws {
         // The regression test: exactly the scenario that was broken.
         // 12-second video:

@@ -541,6 +541,51 @@ struct SBSliderRow: View {
     }
 }
 
+// MARK: - Option Swatch (icon grid selector)
+
+/// Small selectable tile for type pickers — icon + label, glass background.
+/// Used in grid layouts for Background Type, Frame Style, etc.
+struct SBOptionSwatch: View {
+    let icon: String
+    let label: String
+    var isSelected: Bool = false
+    var action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: SB.Space.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(isSelected ? SB.Colors.accent : SB.Colors.textSecondary)
+                    .frame(height: 20)
+                Text(label)
+                    .font(SB.Typo.mono)
+                    .foregroundStyle(isSelected ? SB.Colors.textPrimary : SB.Colors.textTertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, SB.Space.sm)
+            .background(
+                RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
+                    .fill(isSelected ? SB.Colors.accentSubtle : (isHovered ? Color.white.opacity(0.06) : Color.white.opacity(0.03)))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? SB.Colors.accent.opacity(0.5) : Color.white.opacity(isHovered ? 0.1 : 0.05),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .animation(SB.Anim.fadeQuick, value: isSelected)
+        .animation(SB.Anim.fadeQuick, value: isHovered)
+    }
+}
+
 func sbFormatDuration(_ seconds: Double) -> String {
     let mins = Int(seconds) / 60
     let secs = Int(seconds) % 60
