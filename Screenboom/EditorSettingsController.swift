@@ -198,8 +198,8 @@ final class EditorSettingsController {
             project.backgroundStyle = .wallpaper("Sunset")
         case .image:
             if case .image = project.backgroundStyle { return }
-            // Will need to import — set to solid as placeholder until import
-            break
+            importBackgroundImage()
+            return
         }
         project.updateVisuals()
     }

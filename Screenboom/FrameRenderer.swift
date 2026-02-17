@@ -37,6 +37,11 @@ enum FrameRenderer {
         }
     }
 
+    /// Scale factor for chrome/frame drawing. Reference design is 1080p.
+    nonisolated static func pointScale(for outputSize: CGSize) -> CGFloat {
+        outputSize.height / 1080.0
+    }
+
     nonisolated static func makeVideoComposition(
         for asset: AVAsset,
         sourceSize: CGSize,
@@ -46,7 +51,8 @@ enum FrameRenderer {
     ) -> AVMutableVideoComposition {
         let outputSize = settings.outputSize
         let outputRect = CGRect(origin: .zero, size: outputSize)
-        let chromeH = settings.frameStyle.chromeHeight
+        let scale = pointScale(for: outputSize)
+        let chromeH = settings.frameStyle.chromeHeight * scale
 
         // Calculate recording rect (centered with padding, reduced by chrome height)
         let recordingRect = calculateRecordingRect(
@@ -90,7 +96,8 @@ enum FrameRenderer {
             rect: recordingRect,
             chromeHeight: chromeH,
             cornerRadius: settings.cornerRadius,
-            outputSize: outputSize
+            outputSize: outputSize,
+            pointScale: scale
         )
 
         let ciContext = CIContext(options: [
@@ -358,26 +365,27 @@ enum FrameRenderer {
         rect: CGRect,
         chromeHeight: CGFloat,
         cornerRadius: CGFloat,
-        outputSize: CGSize
+        outputSize: CGSize,
+        pointScale: CGFloat = 1.0
     ) -> CIImage? {
         switch style {
         case .none:
             return nil
 
         case .border(let width, let color):
-            return createBorderOverlay(rect: rect, width: width, color: color, cornerRadius: cornerRadius, outputSize: outputSize)
+            return createBorderOverlay(rect: rect, width: width * pointScale, color: color, cornerRadius: cornerRadius, outputSize: outputSize)
 
         case .gradientBorder(let width, let color1, let color2):
-            return createGradientBorderOverlay(rect: rect, width: width, color1: color1, color2: color2, cornerRadius: cornerRadius, outputSize: outputSize)
+            return createGradientBorderOverlay(rect: rect, width: width * pointScale, color1: color1, color2: color2, cornerRadius: cornerRadius, outputSize: outputSize)
 
         case .neonGlow(let color, let radius):
-            return createNeonGlowOverlay(rect: rect, color: color, radius: radius, cornerRadius: cornerRadius, outputSize: outputSize)
+            return createNeonGlowOverlay(rect: rect, color: color, radius: radius * pointScale, cornerRadius: cornerRadius, outputSize: outputSize)
 
         case .browserChrome:
-            return createChromeOverlay(rect: rect, chromeHeight: chromeHeight, cornerRadius: cornerRadius, outputSize: outputSize, isBrowser: true)
+            return createChromeOverlay(rect: rect, chromeHeight: chromeHeight, cornerRadius: cornerRadius, outputSize: outputSize, isBrowser: true, pointScale: pointScale)
 
         case .macOSWindow:
-            return createChromeOverlay(rect: rect, chromeHeight: chromeHeight, cornerRadius: cornerRadius, outputSize: outputSize, isBrowser: false)
+            return createChromeOverlay(rect: rect, chromeHeight: chromeHeight, cornerRadius: cornerRadius, outputSize: outputSize, isBrowser: false, pointScale: pointScale)
         }
     }
 
@@ -461,10 +469,11 @@ enum FrameRenderer {
 
         ctx.clear(CGRect(origin: .zero, size: outputSize))
 
-        // Draw colored rounded rect outline
+        // Draw colored rounded rect outline — scale stroke for output resolution
+        let glowScale = outputSize.height / 1080.0
         let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
         ctx.setStrokeColor(CGColor(red: color.red, green: color.green, blue: color.blue, alpha: 0.9))
-        ctx.setLineWidth(3.0)
+        ctx.setLineWidth(3.0 * glowScale)
         ctx.addPath(path)
         ctx.strokePath()
 
@@ -479,7 +488,7 @@ enum FrameRenderer {
 
     private nonisolated static func createChromeOverlay(
         rect: CGRect, chromeHeight: CGFloat, cornerRadius: CGFloat,
-        outputSize: CGSize, isBrowser: Bool
+        outputSize: CGSize, isBrowser: Bool, pointScale: CGFloat = 1.0
     ) -> CIImage? {
         let w = Int(outputSize.width)
         let h = Int(outputSize.height)
@@ -496,32 +505,48 @@ enum FrameRenderer {
         // the chrome is at the top of the recording area.
         let chromeRect = CGRect(
             x: rect.minX,
-            y: rect.maxY,  // sits directly above video rect (CIImage bottom-left origin: higher Y = higher)
+            y: rect.maxY,
             width: rect.width,
             height: chromeHeight
         )
 
-        // Draw chrome bar background
+        // Draw chrome bar — top corners rounded, bottom corners sharp (meets video)
         ctx.setFillColor(CGColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1.0))
+        let cr = cornerRadius
         let chromePath = CGMutablePath()
-        // Top corners rounded, bottom corners sharp (meets video)
-        chromePath.addRoundedRect(in: chromeRect,
-            cornerWidth: cornerRadius, cornerHeight: cornerRadius)
+        // Start at bottom-left (sharp corner)
+        chromePath.move(to: CGPoint(x: chromeRect.minX, y: chromeRect.minY))
+        // Left edge up to top-left rounded corner
+        chromePath.addLine(to: CGPoint(x: chromeRect.minX, y: chromeRect.maxY - cr))
+        // Top-left rounded corner
+        chromePath.addArc(tangent1End: CGPoint(x: chromeRect.minX, y: chromeRect.maxY),
+                          tangent2End: CGPoint(x: chromeRect.minX + cr, y: chromeRect.maxY),
+                          radius: cr)
+        // Top edge to top-right rounded corner
+        chromePath.addLine(to: CGPoint(x: chromeRect.maxX - cr, y: chromeRect.maxY))
+        // Top-right rounded corner
+        chromePath.addArc(tangent1End: CGPoint(x: chromeRect.maxX, y: chromeRect.maxY),
+                          tangent2End: CGPoint(x: chromeRect.maxX, y: chromeRect.maxY - cr),
+                          radius: cr)
+        // Right edge down to bottom-right (sharp corner)
+        chromePath.addLine(to: CGPoint(x: chromeRect.maxX, y: chromeRect.minY))
+        chromePath.closeSubpath()
         ctx.addPath(chromePath)
         ctx.fillPath()
 
         // Separator line at bottom of chrome
+        let sepInset = 8 * pointScale
         ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.06))
-        ctx.setLineWidth(0.5)
-        ctx.move(to: CGPoint(x: chromeRect.minX + 8, y: chromeRect.minY))
-        ctx.addLine(to: CGPoint(x: chromeRect.maxX - 8, y: chromeRect.minY))
+        ctx.setLineWidth(max(0.5, 0.5 * pointScale))
+        ctx.move(to: CGPoint(x: chromeRect.minX + sepInset, y: chromeRect.minY))
+        ctx.addLine(to: CGPoint(x: chromeRect.maxX - sepInset, y: chromeRect.minY))
         ctx.strokePath()
 
-        // Traffic lights — 12px diameter circles
+        // Traffic lights — scaled to output resolution
+        let dotRadius = 6 * pointScale
+        let dotStartX = chromeRect.minX + 16 * pointScale
+        let dotSpacing = 22 * pointScale
         let dotY = chromeRect.midY
-        let dotRadius: CGFloat = 6
-        let dotStartX = chromeRect.minX + 16
-        let dotSpacing: CGFloat = 22
         let colors: [(r: CGFloat, g: CGFloat, b: CGFloat)] = [
             (1.0, 0.35, 0.33),   // red (close)
             (1.0, 0.78, 0.22),   // yellow (minimize)
@@ -535,11 +560,13 @@ enum FrameRenderer {
 
         // Browser: address bar capsule
         if isBrowser {
-            let barX = dotStartX + 3 * dotSpacing + 12
-            let barWidth = chromeRect.width - barX - 16 + chromeRect.minX
-            let barHeight: CGFloat = 24
+            let barLeftPad = 12 * pointScale
+            let barRightPad = 16 * pointScale
+            let barX = dotStartX + 3 * dotSpacing + barLeftPad
+            let barWidth = chromeRect.maxX - barX - barRightPad
+            let barHeight = 24 * pointScale
             let barY = chromeRect.midY - barHeight / 2
-            if barWidth > 40 {
+            if barWidth > 40 * pointScale {
                 let barRect = CGRect(x: barX, y: barY, width: barWidth, height: barHeight)
                 let barPath = CGPath(roundedRect: barRect, cornerWidth: barHeight / 2, cornerHeight: barHeight / 2, transform: nil)
                 ctx.setFillColor(CGColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1.0))
