@@ -35,23 +35,31 @@ Screenboom is a native macOS app. No web views, no bundled Chromium, no 300MB do
 - Smooth speed ramping — gradual transitions between segments with different speeds (smoothstep easing, both in preview and export)
 - Hover preview — scrub the timeline by hovering without committing the playhead
 
+**Cursor Intelligence**
+- Smooth cursor rendering from recorded metadata (Catmull-Rom interpolation)
+- Multiple cursor styles — Arrow, Pointer, Crosshair, Circle Dot
+- Click ripple effects with customizable color and radius
+- Auto-zoom — detects click and keyboard activity clusters, zooms into areas of focus
+- Editable zoom regions on the timeline — resize, move, adjust zoom level and focus point
+
 **Screen Recorder**
 - Built-in ScreenCaptureKit recorder — record any display or window
 - 30/60 fps capture
-- Cursor metadata tracking for future cursor intelligence
+- Cursor and keyboard metadata tracking for auto-zoom intelligence
 
 **Multi-Project Editor**
 - Manage multiple projects from a welcome screen
 - Drag-and-drop or file picker import
 - Real-time preview with all effects applied
 - Inline rename and delete with hover-reveal actions
-- Undo/Redo (Cmd+Z / Cmd+Shift+Z)
+- Automatic Undo/Redo for all editing state (Cmd+Z / Cmd+Shift+Z)
 - State persistence — projects survive app restarts
 - Thumbnail and solid-color timeline view modes
 - Multiple output resolutions (720p, 1080p, 1440p, 4K)
 
 **Export**
-- Polished MP4 with all visual effects baked in
+- HEVC export with resolution-scaled bitrate (20–80 Mbps)
+- Lanczos downscaling for sharp text and UI in screen content
 - Source frame rate preserved (no dropped frames)
 - Speed changes with smooth ramps at boundaries
 
@@ -104,9 +112,9 @@ No external dependencies. Pure Swift + Apple frameworks.
 
 - [x] Built-in screen recorder (ScreenCaptureKit)
 - [x] Multi-project support with welcome screen
-- [ ] Cursor intelligence — smooth cursor rendering from metadata
-- [ ] Auto-zoom — click detection, dwell tracking, smooth camera follow
-- [ ] Cursor effects — click indicators, cursor scaling, trail effects
+- [x] Cursor intelligence — smooth cursor rendering from metadata
+- [x] Auto-zoom — click and keyboard detection, editable zoom regions on timeline
+- [x] Cursor effects — click ripple indicators, multiple cursor styles
 - [ ] Audio support — system audio and microphone
 - [ ] Webcam overlay — picture-in-picture with customizable shape and position
 - [ ] Background options — wallpapers, images, solid colors (not just gradients)

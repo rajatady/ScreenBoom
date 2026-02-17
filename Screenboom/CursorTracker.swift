@@ -1,10 +1,12 @@
 import Foundation
 import AppKit
+import ApplicationServices
 
 @Observable
 final class CursorTracker {
     private(set) var events: [CursorEvent] = []
     private(set) var isTracking = false
+    private(set) var isKeyboardMonitoringAvailable = false
 
     /// Screen origin of the capture area (set before startTracking)
     var captureOrigin: CGPoint = .zero
@@ -27,6 +29,16 @@ final class CursorTracker {
         events.removeAll()
         trackingStartDate = Date()
         isTracking = true
+
+        // Keyboard global monitoring requires Accessibility permission.
+        // Without it, keyDown events silently never fire (mouse events work without it).
+        let trusted = AXIsProcessTrusted()
+        isKeyboardMonitoringAvailable = trusted
+        if !trusted {
+            // Prompt user to grant Accessibility access in System Settings
+            let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+            let _ = AXIsProcessTrustedWithOptions(options)
+        }
 
         moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleMove(event)

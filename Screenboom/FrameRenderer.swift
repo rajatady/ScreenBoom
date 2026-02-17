@@ -50,7 +50,11 @@ enum FrameRenderer {
             size: outputSize
         )
 
-        let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+        let ciContext = CIContext(options: [
+            .useSoftwareRenderer: false,
+            .highQualityDownsample: true,
+            .workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!
+        ])
         let clearImage = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
             .cropped(to: outputRect)
 
@@ -79,18 +83,22 @@ enum FrameRenderer {
                 }
             }
 
-            // Scale source to fit recording area
+            // Scale source to fit recording area — Lanczos for sharp screen content
             let scaleX = recRect.width / effectiveExtent.width
             let scaleY = recRect.height / effectiveExtent.height
             let scale = min(scaleX, scaleY)
 
-            let scaledW = effectiveExtent.width * scale
-            let scaledH = effectiveExtent.height * scale
-            let offsetX = recRect.midX - scaledW / 2 - effectiveExtent.origin.x * scale
-            let offsetY = recRect.midY - scaledH / 2 - effectiveExtent.origin.y * scale
+            let lanczos = CIFilter.lanczosScaleTransform()
+            lanczos.inputImage = sourceImage
+            lanczos.scale = Float(scale)
+            lanczos.aspectRatio = 1.0
+            let scaled = lanczos.outputImage ?? sourceImage
 
-            let positioned = sourceImage
-                .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            let scaledExtent = scaled.extent
+            let offsetX = recRect.midX - scaledExtent.width / 2 - scaledExtent.origin.x
+            let offsetY = recRect.midY - scaledExtent.height / 2 - scaledExtent.origin.y
+
+            let positioned = scaled
                 .transformed(by: CGAffineTransform(translationX: offsetX, y: offsetY))
                 .cropped(to: recRect)
 

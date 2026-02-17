@@ -101,8 +101,8 @@ final class Project {
     var shadowRadius: CGFloat = 30
     var shadowOpacity: CGFloat = 0.5
 
-    var outputWidth: CGFloat = 1920
-    var outputHeight: CGFloat = 1080
+    var outputWidth: CGFloat = 3840
+    var outputHeight: CGFloat = 2160
 
     var currentTime: Double = 0
     var playheadTime: Double = 0
@@ -211,52 +211,139 @@ final class Project {
         }
     }
 
-    // MARK: - Undo/Redo
+    // MARK: - Undo/Redo (Automatic)
+    //
+    // Every editing property is captured in EditingSnapshot.
+    // saveState() auto-captures undo entries with debouncing (500ms batches).
+    //
+    // Contract: ANY mutation that calls saveState() (directly or via updateVisuals())
+    // gets automatic undo/redo. No manual pushUndo() calls needed — ever.
+    //
+    // To add undo support for new properties:
+    //   1. Add to EditingSnapshot
+    //   2. Capture in captureSnapshot()
+    //   3. Restore in restoreFromSnapshot()
+    // That's it. Everything else is automatic.
 
-    private struct UndoSnapshot {
+    private struct EditingSnapshot {
+        // Timeline
         let splitPoints: [Double]
-        let segments: [(startTime: Double, endTime: Double, speed: Double, isEnabled: Bool)]
+        let segments: [(start: Double, end: Double, speed: Double, enabled: Bool)]
+        // Appearance
+        let padding: CGFloat
+        let cornerRadius: CGFloat
+        let shadowRadius: CGFloat
+        let shadowOpacity: CGFloat
+        let color1: [Double]  // [r, g, b]
+        let color2: [Double]
+        let outputWidth: CGFloat
+        let outputHeight: CGFloat
+        let showThumbnails: Bool
+        // Cursor & Zoom
+        let cursorSettings: CursorSettings
+        let zoomRegions: [ZoomRegion]
+        // Position
+        let playheadTime: Double
     }
 
-    private var undoStack: [UndoSnapshot] = []
-    private var redoStack: [UndoSnapshot] = []
+    private var undoStack: [EditingSnapshot] = []
+    private var redoStack: [EditingSnapshot] = []
+    private var lastCommittedSnapshot: EditingSnapshot?
+    private var preChangeSnapshot: EditingSnapshot?
+    private var undoCommitTask: Task<Void, Never>?
+    private var isRestoringFromUndo = false
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
 
-    private func captureSnapshot() -> UndoSnapshot {
-        UndoSnapshot(
+    private func captureSnapshot() -> EditingSnapshot {
+        let ns1 = NSColor(gradientColor1).usingColorSpace(.sRGB) ?? NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
+        let ns2 = NSColor(gradientColor2).usingColorSpace(.sRGB) ?? NSColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 1)
+        return EditingSnapshot(
             splitPoints: splitPoints,
-            segments: segments.map { ($0.startTime, $0.endTime, $0.speed, $0.isEnabled) }
+            segments: segments.map { ($0.startTime, $0.endTime, $0.speed, $0.isEnabled) },
+            padding: padding,
+            cornerRadius: cornerRadius,
+            shadowRadius: shadowRadius,
+            shadowOpacity: shadowOpacity,
+            color1: [ns1.redComponent, ns1.greenComponent, ns1.blueComponent],
+            color2: [ns2.redComponent, ns2.greenComponent, ns2.blueComponent],
+            outputWidth: outputWidth,
+            outputHeight: outputHeight,
+            showThumbnails: showThumbnails,
+            cursorSettings: cursorSettings,
+            zoomRegions: zoomRegions,
+            playheadTime: playheadTime
         )
     }
 
-    private func pushUndo() {
-        undoStack.append(captureSnapshot())
+    private func commitUndoEntry() {
+        guard let before = preChangeSnapshot else { return }
+        undoStack.append(before)
         if undoStack.count > 50 { undoStack.removeFirst() }
         redoStack.removeAll()
+        lastCommittedSnapshot = captureSnapshot()
+        preChangeSnapshot = nil
     }
 
     func undo() {
-        guard let snapshot = undoStack.popLast() else { return }
+        // Flush any pending undo batch
+        undoCommitTask?.cancel()
+        if preChangeSnapshot != nil { commitUndoEntry() }
+
+        guard let previous = undoStack.popLast() else { return }
         redoStack.append(captureSnapshot())
-        restoreSnapshot(snapshot)
+        restoreFromSnapshot(previous)
     }
 
     func redo() {
-        guard let snapshot = redoStack.popLast() else { return }
+        guard let next = redoStack.popLast() else { return }
         undoStack.append(captureSnapshot())
-        restoreSnapshot(snapshot)
+        restoreFromSnapshot(next)
     }
 
-    private func restoreSnapshot(_ snapshot: UndoSnapshot) {
+    private func restoreFromSnapshot(_ snapshot: EditingSnapshot) {
+        isRestoringFromUndo = true
+
+        // Timeline
         splitPoints = snapshot.splitPoints
         segments = snapshot.segments.map {
-            Segment(startTime: $0.startTime, endTime: $0.endTime, speed: $0.speed, isEnabled: $0.isEnabled)
+            Segment(startTime: $0.start, endTime: $0.end, speed: $0.speed, isEnabled: $0.enabled)
         }
+
+        // Appearance
+        padding = snapshot.padding
+        cornerRadius = snapshot.cornerRadius
+        shadowRadius = snapshot.shadowRadius
+        shadowOpacity = snapshot.shadowOpacity
+        gradientColor1 = Color(red: snapshot.color1[safe: 0] ?? 0.08,
+                               green: snapshot.color1[safe: 1] ?? 0.08,
+                               blue: snapshot.color1[safe: 2] ?? 0.12)
+        gradientColor2 = Color(red: snapshot.color2[safe: 0] ?? 0.18,
+                               green: snapshot.color2[safe: 1] ?? 0.12,
+                               blue: snapshot.color2[safe: 2] ?? 0.28)
+        outputWidth = snapshot.outputWidth
+        outputHeight = snapshot.outputHeight
+        showThumbnails = snapshot.showThumbnails
+
+        // Cursor & Zoom
+        cursorSettings = snapshot.cursorSettings
+        zoomRegions = snapshot.zoomRegions
+
+        // Position
+        playheadTime = snapshot.playheadTime
+        currentTime = snapshot.playheadTime
+
         selectedSegmentId = nil
+        selectedZoomRegionID = nil
+
         updateBoundaryObservers()
-        saveState()
+        rebuildCursorOverlay()
+        updateVisuals()
+
+        lastCommittedSnapshot = snapshot
+        preChangeSnapshot = nil
+        isRestoringFromUndo = false
     }
 
     var totalOutputDuration: Double {
@@ -268,6 +355,27 @@ final class Project {
     // MARK: - Persistence
 
     func saveState() {
+        // Auto-undo: capture the "before" state on first change in a batch
+        if !isRestoringFromUndo {
+            if lastCommittedSnapshot == nil {
+                // First save after load — establish baseline, no undo entry
+                lastCommittedSnapshot = captureSnapshot()
+            } else if preChangeSnapshot == nil {
+                // First change in a new batch — remember the pre-change state
+                preChangeSnapshot = lastCommittedSnapshot
+            }
+
+            // Debounced commit to undo stack (500ms after last change).
+            // Rapid changes (slider drags) batch into ONE undo entry.
+            undoCommitTask?.cancel()
+            undoCommitTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                self?.commitUndoEntry()
+            }
+        }
+
+        // Debounced disk write
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
@@ -519,24 +627,25 @@ final class Project {
         // Save state before clearing
         writeStateNow()
 
-        // Generate thumbnail (capture refs before clearing)
+        // Generate thumbnail synchronously before clearing state
+        // (async Task.detached raced with state clearing — thumbnail wasn't written before WelcomeView rendered)
         if let projectID = currentProjectID, let store, let capturedAsset = asset {
             let dur = duration
             let thumbnailURL = store.thumbnailURL(for: projectID)
-            Task.detached {
-                let time = CMTime(seconds: dur.seconds * 0.33, preferredTimescale: 600)
-                let generator = AVAssetImageGenerator(asset: capturedAsset)
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 600, height: 400)
+            let time = CMTime(seconds: dur.seconds * 0.33, preferredTimescale: 600)
+            let generator = AVAssetImageGenerator(asset: capturedAsset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 600, height: 400)
 
-                guard let result = try? await generator.image(at: time) else { return }
-                let nsImage = NSImage(cgImage: result.image, size: NSSize(width: result.image.width, height: result.image.height))
-                guard let tiffData = nsImage.tiffRepresentation,
-                      let bitmap = NSBitmapImageRep(data: tiffData),
-                      let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else { return }
-
-                try? FileManager.default.createDirectory(at: thumbnailURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? jpegData.write(to: thumbnailURL, options: .atomic)
+            var actualTime = CMTime.zero
+            if let cgImage = try? generator.copyCGImage(at: time, actualTime: &actualTime) {
+                let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                if let tiffData = nsImage.tiffRepresentation,
+                   let bitmap = NSBitmapImageRep(data: tiffData),
+                   let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) {
+                    try? FileManager.default.createDirectory(at: thumbnailURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try? jpegData.write(to: thumbnailURL, options: .atomic)
+                }
             }
         }
 
@@ -579,6 +688,11 @@ final class Project {
         selectedZoomRegionID = nil
         undoStack = []
         redoStack = []
+        lastCommittedSnapshot = nil
+        preChangeSnapshot = nil
+        undoCommitTask?.cancel()
+        undoCommitTask = nil
+        isRestoringFromUndo = false
         currentProjectID = nil
     }
 
@@ -743,6 +857,7 @@ final class Project {
         guard let idx = zoomRegions.firstIndex(where: { $0.id == id }) else { return }
         zoomRegions[idx].zoomLevel = max(1.1, min(4.0, level))
         rebuildCursorOverlay()
+        seekToZoomRegionPeak(id)
         updateVisuals()
     }
 
@@ -755,7 +870,29 @@ final class Project {
         zoomRegions[idx].focusX = max(halfW, min(videoSize.width - halfW, x))
         zoomRegions[idx].focusY = max(halfH, min(videoSize.height - halfH, y))
         rebuildCursorOverlay()
+        seekToZoomRegionPeak(id)
         updateVisuals()
+    }
+
+    func setZoomRegionTimes(start: Double, end: Double, for id: UUID) {
+        guard let idx = zoomRegions.firstIndex(where: { $0.id == id }) else { return }
+        let minDuration = 0.3
+        let maxTime = duration.seconds
+        let clampedStart = max(0, min(start, maxTime - minDuration))
+        let clampedEnd = max(clampedStart + minDuration, min(end, maxTime))
+        zoomRegions[idx].startTime = clampedStart
+        zoomRegions[idx].endTime = clampedEnd
+        rebuildCursorOverlay()
+        seekToZoomRegionPeak(id)
+        updateVisuals()
+    }
+
+    /// Seek to the peak (midpoint) of a zoom region so the preview shows the full zoom effect
+    private func seekToZoomRegionPeak(_ id: UUID) {
+        guard let region = zoomRegions.first(where: { $0.id == id }) else { return }
+        let peakTime = (region.startTime + region.endTime) / 2
+        playheadTime = peakTime
+        currentTime = peakTime
     }
 
     /// Seek to a zoom region's start time so the preview shows the zoom effect
@@ -765,6 +902,63 @@ final class Project {
         playheadTime = time
         currentTime = time
         seek(toFraction: time / duration.seconds)
+    }
+
+    /// Add a new zoom region at the given time (manual placement)
+    func addZoomRegion(at time: Double) {
+        let dur = duration.seconds
+        guard dur > 0 else { return }
+
+        let regionDuration: Double = 2.0
+        let startTime = max(0, time - regionDuration / 2)
+        let endTime = min(dur, startTime + regionDuration)
+
+        let region = ZoomRegion(
+            startTime: startTime,
+            endTime: endTime,
+            zoomLevel: cursorSettings.autoZoomLevel,
+            focusX: videoSize.width / 2,
+            focusY: videoSize.height / 2
+        )
+        zoomRegions.append(region)
+        selectedZoomRegionID = region.id
+        selectedSegmentId = nil
+
+        if !cursorSettings.autoZoomEnabled {
+            cursorSettings.autoZoomEnabled = true
+        }
+
+        rebuildCursorOverlay()
+        seekToZoomRegionPeak(region.id)
+        updateVisuals()
+    }
+
+    /// Duplicate a zoom region, placing the copy right after the original
+    func duplicateZoomRegion(_ id: UUID) {
+        guard let region = zoomRegions.first(where: { $0.id == id }) else { return }
+        let dur = duration.seconds
+        let regionDuration = region.endTime - region.startTime
+
+        var newStart = region.endTime + 0.5
+        var newEnd = newStart + regionDuration
+        if newEnd > dur {
+            newStart = max(0, dur - regionDuration)
+            newEnd = dur
+        }
+
+        let newRegion = ZoomRegion(
+            startTime: newStart,
+            endTime: newEnd,
+            zoomLevel: region.zoomLevel,
+            focusX: region.focusX,
+            focusY: region.focusY,
+            isEnabled: region.isEnabled
+        )
+        zoomRegions.append(newRegion)
+        selectedZoomRegionID = newRegion.id
+        rebuildCursorOverlay()
+        seekToZoomRegionPeak(newRegion.id)
+        updateVisuals()
     }
 
     // MARK: - Player
@@ -865,6 +1059,11 @@ final class Project {
             cursorOverlayState: cursorOverlayState
         )
         playerItem?.videoComposition = videoComp
+        // Force re-render current frame when paused so preview reflects changes immediately
+        let dur = duration.seconds
+        if dur > 0 && !isPlaying {
+            seek(toFraction: playheadTime / dur)
+        }
         saveState()
     }
 
@@ -886,7 +1085,6 @@ final class Project {
         let t = (time * 100).rounded() / 100
         guard t > 0.05, t < duration.seconds - 0.05 else { return }
         guard !splitPoints.contains(where: { abs($0 - t) < 0.05 }) else { return }
-        pushUndo()
         splitPoints.append(t)
         splitPoints.sort()
         rebuildSegments()
@@ -895,7 +1093,6 @@ final class Project {
 
     func removeSplit(at index: Int) {
         guard splitPoints.indices.contains(index) else { return }
-        pushUndo()
         splitPoints.remove(at: index)
         rebuildSegments()
         saveState()
@@ -924,7 +1121,6 @@ final class Project {
 
     func toggleSegment(_ id: UUID) {
         guard let idx = segments.firstIndex(where: { $0.id == id }) else { return }
-        pushUndo()
         segments[idx].isEnabled.toggle()
         updateBoundaryObservers()
         saveState()
@@ -932,7 +1128,6 @@ final class Project {
 
     func setSpeed(_ speed: Double, for id: UUID) {
         guard let idx = segments.firstIndex(where: { $0.id == id }) else { return }
-        pushUndo()
         segments[idx].speed = max(0.25, min(32.0, speed))
         saveState()
     }

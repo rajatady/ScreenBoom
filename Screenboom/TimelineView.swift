@@ -5,9 +5,21 @@ struct TimelineView: View {
     @Bindable var project: Project
     @State private var timelineZoom: CGFloat = 1.0
     @State private var hoverFraction: CGFloat?
+    @State private var activeZoomDrag: ZoomDrag?
+    @State private var isShowingResizeCursor = false
+    @State private var zoomTrackHoverTime: Double?
     private let splitGap: CGFloat = 4
 
     private let zoomTrackHeight: CGFloat = 36
+    private let edgeHitZone: CGFloat = 12
+
+    private struct ZoomDrag: Equatable {
+        enum Mode: Equatable { case resizeStart, resizeEnd, move }
+        var regionID: UUID
+        var mode: Mode
+        var grabOffset: Double      // move: time from region start to grab point
+        var originalDuration: Double // move: preserve region duration
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +33,7 @@ struct TimelineView: View {
                 let baseWidth = geo.size.width
                 let zoomedWidth = baseWidth * timelineZoom
 
-                ScrollView(.horizontal, showsIndicators: true) {
+                ScrollView(.horizontal, showsIndicators: false) {
                     ZStack(alignment: .leading) {
                         if project.showThumbnails {
                             thumbnailStrip(width: zoomedWidth)
@@ -29,8 +41,8 @@ struct TimelineView: View {
                         }
                         segmentOverlays(width: zoomedWidth)
 
-                        // Zoom track pinned to bottom
-                        if project.hasCursorData && !project.zoomRegions.isEmpty {
+                        // Zoom track pinned to bottom (always visible when cursor data exists)
+                        if project.hasCursorData {
                             zoomTrack(width: zoomedWidth)
                                 .frame(width: zoomedWidth, height: zoomTrackHeight)
                                 .frame(maxHeight: .infinity, alignment: .bottom)
@@ -44,13 +56,21 @@ struct TimelineView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
-                                let y = value.location.y
-                                let zoomTrackTop = geo.size.height - zoomTrackHeight
-                                if project.hasCursorData && !project.zoomRegions.isEmpty && y >= zoomTrackTop {
-                                    handleZoomTrackInteraction(x: value.location.x, width: zoomedWidth)
+                                if activeZoomDrag != nil {
+                                    // Ongoing zoom drag — continue regardless of Y
+                                    handleZoomDragContinue(x: value.location.x, width: zoomedWidth)
                                 } else {
-                                    handleTimelineInteraction(x: value.location.x, width: zoomedWidth)
+                                    let y = value.location.y
+                                    let zoomTrackTop = geo.size.height - zoomTrackHeight
+                                    if project.hasCursorData && y >= zoomTrackTop {
+                                        handleZoomDragStart(x: value.location.x, width: zoomedWidth)
+                                    } else {
+                                        handleTimelineInteraction(x: value.location.x, width: zoomedWidth)
+                                    }
                                 }
+                            }
+                            .onEnded { _ in
+                                activeZoomDrag = nil
                             }
                     )
                     .onContinuousHover { phase in
@@ -64,8 +84,63 @@ struct TimelineView: View {
                                 project.currentTime = fraction * dur
                                 project.seek(toFraction: fraction)
                             }
+
+                            // Zoom track hover: "+" indicator on empty areas
+                            let zoomTrackTop = geo.size.height - zoomTrackHeight
+                            let inZoomTrack = project.hasCursorData && location.y >= zoomTrackTop
+                            if inZoomTrack {
+                                let time = fraction * dur
+                                let overRegion = project.zoomRegions.contains { time >= $0.startTime && time <= $0.endTime }
+                                zoomTrackHoverTime = overRegion ? nil : time
+                            } else {
+                                zoomTrackHoverTime = nil
+                            }
+
+                            // Resize cursor when hovering near zoom region edges
+                            let nearEdge = inZoomTrack && !project.zoomRegions.isEmpty && isNearZoomRegionEdge(x: location.x, width: zoomedWidth, duration: dur)
+                            if nearEdge && !isShowingResizeCursor {
+                                NSCursor.resizeLeftRight.push()
+                                isShowingResizeCursor = true
+                            } else if !nearEdge && isShowingResizeCursor {
+                                NSCursor.pop()
+                                isShowingResizeCursor = false
+                            }
+
                         case .ended:
                             hoverFraction = nil
+                            zoomTrackHoverTime = nil
+                            if isShowingResizeCursor {
+                                NSCursor.pop()
+                                isShowingResizeCursor = false
+                            }
+                        }
+                    }
+                    .contextMenu {
+                        if project.hasCursorData {
+                            if let id = project.selectedZoomRegionID,
+                               let region = project.zoomRegions.first(where: { $0.id == id }) {
+                                Button(region.isEnabled ? "Disable Zoom" : "Enable Zoom") {
+                                    project.toggleZoomRegion(id)
+                                }
+                                Menu("Zoom Level") {
+                                    ForEach([1.5, 2.0, 2.5, 3.0, 3.5, 4.0], id: \.self) { level in
+                                        Button(String(format: "%.1fx", level)) {
+                                            project.setZoomRegionLevel(CGFloat(level), for: id)
+                                        }
+                                    }
+                                }
+                                Button("Duplicate") {
+                                    project.duplicateZoomRegion(id)
+                                }
+                                Divider()
+                                Button("Delete", role: .destructive) {
+                                    project.deleteZoomRegion(id)
+                                }
+                                Divider()
+                            }
+                            Button("Add Zoom Region Here") {
+                                project.addZoomRegion(at: project.playheadTime)
+                            }
                         }
                     }
                 }
@@ -106,25 +181,86 @@ struct TimelineView: View {
         project.seek(toFraction: fraction)
     }
 
-    func handleZoomTrackInteraction(x: CGFloat, width: CGFloat) {
+    // MARK: - Zoom Region Drag (resize edges / move)
+
+    func handleZoomDragStart(x: CGFloat, width: CGFloat) {
         let dur = project.duration.seconds
         guard dur > 0 else { return }
 
-        let fraction = max(0, min(1, x / width))
-        let sourceTime = fraction * dur
+        let sourceTime = max(0, min(dur, (x / width) * dur))
 
-        // Find zoom region at this time
-        if let region = project.zoomRegions.first(where: { sourceTime >= $0.startTime && sourceTime < $0.endTime }) {
-            project.selectedZoomRegionID = region.id
-            project.selectedSegmentId = nil
-        } else {
-            project.selectedZoomRegionID = nil
+        for region in project.zoomRegions {
+            let startX = (region.startTime / dur) * width
+            let endX = (region.endTime / dur) * width
+
+            // Near left edge → resize start
+            if abs(x - startX) < edgeHitZone && x < endX {
+                project.selectedZoomRegionID = region.id
+                project.selectedSegmentId = nil
+                activeZoomDrag = ZoomDrag(
+                    regionID: region.id, mode: .resizeStart,
+                    grabOffset: 0, originalDuration: region.endTime - region.startTime
+                )
+                return
+            }
+
+            // Near right edge → resize end
+            if abs(x - endX) < edgeHitZone && x > startX {
+                project.selectedZoomRegionID = region.id
+                project.selectedSegmentId = nil
+                activeZoomDrag = ZoomDrag(
+                    regionID: region.id, mode: .resizeEnd,
+                    grabOffset: 0, originalDuration: region.endTime - region.startTime
+                )
+                return
+            }
+
+            // Inside region → move
+            if x > startX && x < endX {
+                project.selectedZoomRegionID = region.id
+                project.selectedSegmentId = nil
+                activeZoomDrag = ZoomDrag(
+                    regionID: region.id, mode: .move,
+                    grabOffset: sourceTime - region.startTime,
+                    originalDuration: region.endTime - region.startTime
+                )
+                // Seek to peak for preview
+                let peakTime = (region.startTime + region.endTime) / 2
+                project.playheadTime = peakTime
+                project.currentTime = peakTime
+                project.seek(toFraction: peakTime / dur)
+                return
+            }
         }
 
-        // Also seek
-        project.playheadTime = sourceTime
-        project.currentTime = sourceTime
-        project.seek(toFraction: fraction)
+        // Clicked empty area on zoom track — add a new zoom region
+        project.addZoomRegion(at: sourceTime)
+    }
+
+    func handleZoomDragContinue(x: CGFloat, width: CGFloat) {
+        guard let drag = activeZoomDrag else { return }
+        let dur = project.duration.seconds
+        guard dur > 0 else { return }
+
+        let sourceTime = max(0, min(dur, (x / width) * dur))
+
+        switch drag.mode {
+        case .resizeStart:
+            guard let region = project.zoomRegions.first(where: { $0.id == drag.regionID }) else { return }
+            project.setZoomRegionTimes(start: sourceTime, end: region.endTime, for: drag.regionID)
+
+        case .resizeEnd:
+            guard let region = project.zoomRegions.first(where: { $0.id == drag.regionID }) else { return }
+            project.setZoomRegionTimes(start: region.startTime, end: sourceTime, for: drag.regionID)
+
+        case .move:
+            var newStart = sourceTime - drag.grabOffset
+            var newEnd = newStart + drag.originalDuration
+            // Clamp to video bounds while preserving duration
+            if newStart < 0 { newStart = 0; newEnd = drag.originalDuration }
+            if newEnd > dur { newEnd = dur; newStart = dur - drag.originalDuration }
+            project.setZoomRegionTimes(start: newStart, end: newEnd, for: drag.regionID)
+        }
     }
 
     // MARK: - Segment Controls Bar
@@ -421,6 +557,32 @@ struct TimelineView: View {
                 ForEach(project.zoomRegions) { region in
                     zoomRegionShape(region: region, totalWidth: width, duration: dur)
                 }
+
+                // Ghost "+" indicator on hover over empty areas
+                if let hoverTime = zoomTrackHoverTime {
+                    let ghostDuration: Double = 2.0
+                    let ghostWidth = max(40, width * (ghostDuration / dur))
+                    let hoverX = (hoverTime / dur) * width
+                    let ghostStartX = max(0, min(width - ghostWidth, hoverX - ghostWidth / 2))
+                    let ghostHeight = zoomTrackHeight * 0.45
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(SB.Colors.accent.opacity(0.12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(SB.Colors.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            )
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(SB.Colors.accent.opacity(0.6))
+                    }
+                    .frame(width: ghostWidth, height: ghostHeight)
+                    .offset(x: ghostStartX, y: (zoomTrackHeight - ghostHeight) / 2 - 2)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.15), value: zoomTrackHoverTime != nil)
+                }
             }
         }
         .padding(.top, 2)
@@ -439,9 +601,10 @@ struct TimelineView: View {
         let rampInFraction = regionDuration > 0.01 ? min(0.35, sensitivity.zoomInDuration / regionDuration) : 0.2
         let rampOutFraction = regionDuration > 0.01 ? min(0.35, sensitivity.zoomOutDuration / regionDuration) : 0.2
 
-        // Peak height proportional to zoom level (2x = 50%, 4x = 100%)
+        // Peak height: half-height baseline at 1x, full height at 4x — always selectable
         let normalizedZoom = min(1.0, (region.zoomLevel - 1.0) / 3.0) // 1.0 -> 0, 4.0 -> 1.0
-        let peakHeight = zoomTrackHeight * 0.85 * normalizedZoom
+        let fraction = 0.5 + 0.5 * normalizedZoom  // 1.0x -> 50%, 4.0x -> 100%
+        let peakHeight = zoomTrackHeight * 0.85 * fraction
 
         let fillColor = region.isEnabled
             ? (isSelected ? SB.Colors.accent.opacity(0.45) : SB.Colors.accent.opacity(0.25))
@@ -470,10 +633,37 @@ struct TimelineView: View {
                     .foregroundStyle(region.isEnabled ? SB.Colors.textSecondary : SB.Colors.textTertiary)
                     .offset(y: -2)
             }
+
+            // Edge grab handles (visible on selected regions)
+            if isSelected && peakHeight > 8 {
+                HStack {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(SB.Colors.accent)
+                        .frame(width: 3, height: max(8, peakHeight * 0.5))
+                        .shadow(color: SB.Colors.accent.opacity(0.4), radius: 2)
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(SB.Colors.accent)
+                        .frame(width: 3, height: max(8, peakHeight * 0.5))
+                        .shadow(color: SB.Colors.accent.opacity(0.4), radius: 2)
+                }
+                .frame(width: regionWidth)
+            }
         }
         .frame(width: regionWidth, height: peakHeight)
         .offset(x: startX, y: (zoomTrackHeight - peakHeight) / 2 - 2)
         .allowsHitTesting(false) // hit testing handled by the track gesture
+    }
+
+    func isNearZoomRegionEdge(x: CGFloat, width: CGFloat, duration: Double) -> Bool {
+        for region in project.zoomRegions {
+            let startX = (region.startTime / duration) * width
+            let endX = (region.endTime / duration) * width
+            if abs(x - startX) < edgeHitZone || abs(x - endX) < edgeHitZone {
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: - Helpers

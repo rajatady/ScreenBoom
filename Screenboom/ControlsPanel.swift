@@ -86,6 +86,31 @@ struct ControlsPanel: View {
         VStack(alignment: .leading, spacing: SB.Space.md) {
             SBSectionLabel(text: "Zoom Region")
 
+            // Timing controls
+            let maxTime = CGFloat(max(0.1, project.segments.last?.endTime ?? 1.0))
+
+            sliderRow(
+                label: "Start",
+                value: Binding(
+                    get: { CGFloat(region.startTime) },
+                    set: { project.setZoomRegionTimes(start: Double($0), end: region.endTime, for: region.id) }
+                ),
+                range: 0...maxTime,
+                step: 0.1,
+                format: "%.1fs"
+            ) {}
+
+            sliderRow(
+                label: "End",
+                value: Binding(
+                    get: { CGFloat(region.endTime) },
+                    set: { project.setZoomRegionTimes(start: region.startTime, end: Double($0), for: region.id) }
+                ),
+                range: 0...maxTime,
+                step: 0.1,
+                format: "%.1fs"
+            ) {}
+
             sliderRow(
                 label: "Zoom Level",
                 value: Binding(
@@ -370,6 +395,14 @@ struct ControlsPanel: View {
             autoZoomToggle
             if project.cursorSettings.autoZoomEnabled {
                 autoZoomSensitivityTabs
+
+                sliderRow(
+                    label: "Default Zoom",
+                    value: $project.cursorSettings.autoZoomLevel,
+                    range: 1.1...4.0,
+                    step: 0.1,
+                    format: "%.1fx"
+                ) {}
 
                 SBSecondaryButton(title: "Regenerate", icon: "arrow.clockwise", compact: true) {
                     project.generateAutoZoomRegions()
