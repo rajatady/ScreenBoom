@@ -29,7 +29,9 @@ struct CursorMetadataFile: Codable, Sendable {
     var version: Int = 1
     var frameRate: Double
     var sourceSize: CodableSize
-    var captureOrigin: CodablePoint?  // screen origin of capture area (optional for backward compat)
+    var captureOrigin: CodablePoint?  // screen origin of capture area (Quartz coords, optional for backward compat)
+    var displayHeight: Double?        // primary screen height in points (for Cocoa→Quartz Y conversion)
+    var backingScaleFactor: Double?   // Retina scale factor (1.0 or 2.0)
     var events: [CursorEvent]
 
     struct CodableSize: Codable, Sendable {

@@ -8,8 +8,12 @@ final class CursorTracker {
     private(set) var isTracking = false
     private(set) var isKeyboardMonitoringAvailable = false
 
-    /// Screen origin of the capture area (set before startTracking)
+    /// Screen origin of the capture area in Quartz coords (set before startTracking)
     var captureOrigin: CGPoint = .zero
+    /// Primary screen height in points (for Cocoa→Quartz Y conversion)
+    var displayHeight: CGFloat = 0
+    /// Retina backing scale factor
+    var backingScaleFactor: CGFloat = 1.0
 
     private var moveMonitor: Any?
     private var clickMonitor: Any?
@@ -82,6 +86,8 @@ final class CursorTracker {
                 x: Double(captureOrigin.x),
                 y: Double(captureOrigin.y)
             ),
+            displayHeight: Double(displayHeight),
+            backingScaleFactor: Double(backingScaleFactor),
             events: events
         )
         let encoder = JSONEncoder()

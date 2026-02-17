@@ -94,7 +94,7 @@ struct CursorOverlayState: @unchecked Sendable {
     let smoothedPoints: [SmoothedCursorPoint]
     let clicks: [CursorClick]
     let cursorCIImage: CIImage
-    let cursorHotspot: CGPoint
+    let cursorHotspot: CGPoint       // in CIImage pixels (Retina-scaled)
     let sourceSize: CGSize
     let captureOrigin: CGPoint
     let settings: CursorSettings
@@ -149,13 +149,44 @@ enum CursorOverlayEngine {
         } else {
             captureOrigin = .zero
         }
+        // Display height for Cocoa→Quartz conversion. Fallback to sourceH + originY for old recordings.
+        let displayHeight = metadata.displayHeight ?? (sourceSize.height + captureOrigin.y)
+        let backingScale = metadata.backingScaleFactor ?? 1.0
+
+        zoomLog.info("""
+        [CURSOR DEBUG] prepare() coordinate info:
+          sourceSize=\(sourceSize.width)x\(sourceSize.height)
+          captureOrigin=(\(captureOrigin.x), \(captureOrigin.y))
+          displayHeight=\(displayHeight), backingScale=\(backingScale)
+          totalEvents=\(metadata.events.count)
+        """)
 
         // Convert raw events to video coordinates (top-left origin)
+        // Events are in Cocoa coords (bottom-left origin, Y up).
+        // captureOrigin is in Quartz coords (top-left origin, Y down).
+        // Correct conversion: videoY = displayHeight - cocoaY - quartzOriginY
         let moveEvents = metadata.events.filter { $0.type == .move || $0.type == .click }
         let videoPoints: [(timestamp: Double, x: Double, y: Double)] = moveEvents.map { event in
             let videoX = event.x - captureOrigin.x
-            let videoY = sourceSize.height - (event.y - captureOrigin.y)
+            let videoY = displayHeight - event.y - captureOrigin.y
             return (event.timestamp, videoX, videoY)
+        }
+
+        // DEBUG: Log sample conversions
+        let sampleIndices = [0, moveEvents.count / 2, moveEvents.count - 1].filter { $0 >= 0 && $0 < moveEvents.count }
+        for (i, idx) in sampleIndices.enumerated() {
+            let evt = moveEvents[idx]
+            let vx = evt.x - captureOrigin.x
+            let vy = displayHeight - evt.y - captureOrigin.y
+            zoomLog.info("""
+            [CURSOR DEBUG] Sample event[\(i)] conversion:
+              raw=(\(evt.x), \(evt.y)) t=\(String(format: "%.2f", evt.timestamp))
+              captureOrigin=(\(captureOrigin.x), \(captureOrigin.y))
+              displayHeight=\(displayHeight)
+              videoCoords=(\(vx), \(vy))
+              formula: videoY = displayH(\(displayHeight)) - eventY(\(evt.y)) - originY(\(captureOrigin.y))
+              BOUNDS CHECK: videoX in [0, \(sourceSize.width)]? \(vx >= 0 && vx <= sourceSize.width) | videoY in [0, \(sourceSize.height)]? \(vy >= 0 && vy <= sourceSize.height)
+            """)
         }
 
         // Extract clicks in video coordinates
@@ -164,15 +195,15 @@ enum CursorOverlayEngine {
             .compactMap { event in
                 guard let button = event.button else { return nil }
                 let videoX = event.x - captureOrigin.x
-                let videoY = sourceSize.height - (event.y - captureOrigin.y)
+                let videoY = displayHeight - event.y - captureOrigin.y
                 return CursorClick(timestamp: event.timestamp, x: videoX, y: videoY, button: button)
             }
 
         // Smooth positions
         let smoothed = smoothPositions(videoPoints, outputFrameRate: outputFrameRate)
 
-        // Pre-render cursor image
-        let (cursorImage, hotspot) = renderCursorImage(style: settings.style, size: settings.size)
+        // Pre-render cursor image, scaling hotspot to match Retina CGImage
+        let (cursorImage, hotspot) = renderCursorImage(style: settings.style, size: settings.size, backingScale: backingScale)
 
         // Convert stored zoom regions to keyframes for the render pipeline
         let zoomKFs: [ZoomKeyframe]
@@ -475,15 +506,16 @@ enum CursorOverlayEngine {
 
     private nonisolated static func renderCursorImage(
         style: CursorStyle,
-        size: CGFloat
+        size: CGFloat,
+        backingScale: Double = 1.0
     ) -> (CIImage, CGPoint) {
         switch style {
         case .arrow:
-            return renderSystemCursor(NSCursor.arrow, size: size)
+            return renderSystemCursor(NSCursor.arrow, size: size, backingScale: backingScale)
         case .pointer:
-            return renderSystemCursor(NSCursor.pointingHand, size: size)
+            return renderSystemCursor(NSCursor.pointingHand, size: size, backingScale: backingScale)
         case .crosshair:
-            return renderSystemCursor(NSCursor.crosshair, size: size)
+            return renderSystemCursor(NSCursor.crosshair, size: size, backingScale: backingScale)
         case .circleDot:
             return renderCircleDotCursor(size: size)
         }
@@ -491,7 +523,8 @@ enum CursorOverlayEngine {
 
     private nonisolated static func renderSystemCursor(
         _ cursor: NSCursor,
-        size: CGFloat
+        size: CGFloat,
+        backingScale: Double = 1.0
     ) -> (CIImage, CGPoint) {
         let image = cursor.image
         let hotspot = cursor.hotSpot
@@ -510,7 +543,13 @@ enum CursorOverlayEngine {
             return (fallback, CGPoint(x: 1, y: 1))
         }
 
-        let scaledHotspot = CGPoint(x: hotspot.x * size, y: hotspot.y * size)
+        // NSCursor.hotSpot is in flipped (top-left) POINT coordinates.
+        // cgImage is at Retina resolution (backingScale × points).
+        // Scale the hotspot to match the CIImage's pixel coordinates.
+        let scaledHotspot = CGPoint(
+            x: hotspot.x * size * backingScale,
+            y: hotspot.y * size * backingScale
+        )
         return (CIImage(cgImage: cgImage), scaledHotspot)
     }
 
@@ -784,13 +823,14 @@ enum CursorOverlayEngine {
         } else {
             captureOrigin = .zero
         }
+        let displayHeight = metadata.displayHeight ?? (sourceSize.height + captureOrigin.y)
 
         let clicks: [CursorClick] = metadata.events
             .filter { $0.type == .click }
             .compactMap { event in
                 guard let button = event.button else { return nil }
                 let videoX = event.x - captureOrigin.x
-                let videoY = sourceSize.height - (event.y - captureOrigin.y)
+                let videoY = displayHeight - event.y - captureOrigin.y
                 return CursorClick(timestamp: event.timestamp, x: videoX, y: videoY, button: button)
             }
 
@@ -798,7 +838,7 @@ enum CursorOverlayEngine {
             .filter { $0.type == .keyDown }
             .map { event in
                 let videoX = event.x - captureOrigin.x
-                let videoY = sourceSize.height - (event.y - captureOrigin.y)
+                let videoY = displayHeight - event.y - captureOrigin.y
                 return (event.timestamp, videoX, videoY)
             }
 

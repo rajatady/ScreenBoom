@@ -9,7 +9,7 @@ struct WelcomeView: View {
     @State private var editingID: UUID?
     @State private var editingName = ""
     @State private var deletingProject: ProjectInfo?
-    @Environment(\.openWindow) private var openWindow
+    @Environment(RecorderPanelManager.self) private var recorderPanelManager
 
     var body: some View {
         Group {
@@ -84,7 +84,7 @@ struct WelcomeView: View {
                     showingImporter = true
                 }
                 SBSecondaryButton(title: "Record Screen", icon: "record.circle") {
-                    openWindow(id: "recorder")
+                    showRecorder()
                 }
             }
 
@@ -117,7 +117,7 @@ struct WelcomeView: View {
                         showingImporter = true
                     }
                     SBSecondaryButton(title: "Record", icon: "record.circle", compact: true) {
-                        openWindow(id: "recorder")
+                        showRecorder()
                     }
                 }
             }
@@ -164,6 +164,15 @@ struct WelcomeView: View {
                 .padding(.horizontal, SB.Space.xxl)
                 .padding(.vertical, SB.Space.lg)
             }
+        }
+    }
+
+    // MARK: - Show Recorder
+
+    private func showRecorder() {
+        recorderPanelManager.show { session in
+            project.createProject(session: session, store: store)
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 }

@@ -4,11 +4,13 @@ import SwiftUI
 struct ScreenboomApp: App {
     @State private var project = Project()
     @State private var projectStore = ProjectStore()
+    @State private var recorderPanelManager = RecorderPanelManager()
 
     var body: some Scene {
         WindowGroup {
             ContentView(project: project, store: projectStore)
                 .frame(minWidth: 1100, minHeight: 700)
+                .environment(recorderPanelManager)
                 .onAppear {
                     projectStore.migrateIfNeeded()
                     let store = projectStore
@@ -32,12 +34,5 @@ struct ScreenboomApp: App {
                     .disabled(!project.canRedo)
             }
         }
-
-        Window("Screen Recorder", id: "recorder") {
-            RecorderWindow { session in
-                project.createProject(session: session, store: projectStore)
-            }
-        }
-        .windowResizability(.contentSize)
     }
 }
