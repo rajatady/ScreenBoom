@@ -378,6 +378,169 @@ struct SBPulsingDot: View {
 
 // MARK: - Duration Formatter
 
+// MARK: - Icon Tab Bar (vertical strip)
+
+struct SBIconTabBar<Tab: Hashable>: View {
+    let tabs: [(id: Tab, icon: String, label: String, enabled: Bool)]
+    @Binding var selection: Tab
+
+    @State private var hoveredTab: Tab?
+
+    var body: some View {
+        VStack(spacing: SB.Space.xs) {
+            ForEach(tabs, id: \.id) { tab in
+                tabButton(tab)
+            }
+        }
+        .padding(.vertical, SB.Space.sm)
+        .frame(width: 36)
+    }
+
+    private func tabButton(_ tab: (id: Tab, icon: String, label: String, enabled: Bool)) -> some View {
+        let isSelected = selection == tab.id
+        let isHovered = hoveredTab == tab.id
+
+        return Button {
+            if tab.enabled {
+                selection = tab.id
+            }
+        } label: {
+            ZStack {
+                // Accent indicator bar (left edge)
+                if isSelected && tab.enabled {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(SB.Colors.accent)
+                        .frame(width: 3, height: 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.scale.combined(with: .opacity))
+                }
+
+                Image(systemName: tab.icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(
+                        !tab.enabled ? SB.Colors.textTertiary.opacity(0.5) :
+                        isSelected ? SB.Colors.accent :
+                        isHovered ? SB.Colors.textPrimary :
+                        SB.Colors.textSecondary
+                    )
+                    .frame(width: 32, height: 32)
+            }
+            .frame(width: 36, height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
+                    .fill(isSelected && tab.enabled ? SB.Colors.accentSubtle : .clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredTab = $0 ? tab.id : nil }
+        .opacity(tab.enabled ? 1.0 : 0.3)
+        .help(tab.label + (tab.enabled ? "" : " (Coming Soon)"))
+        .animation(SB.Anim.springSnappy, value: isSelected)
+    }
+}
+
+// MARK: - Coming Soon Placeholder
+
+struct SBComingSoonPlaceholder: View {
+    let icon: String
+    let title: String
+    let description: String
+
+    var body: some View {
+        VStack(spacing: SB.Space.lg) {
+            Spacer()
+
+            Image(systemName: icon)
+                .font(.system(size: 48, weight: .ultraLight))
+                .foregroundStyle(SB.Colors.textTertiary.opacity(0.2))
+
+            Text(title)
+                .font(SB.Typo.sectionTitle)
+                .foregroundStyle(SB.Colors.textTertiary.opacity(0.6))
+
+            Text(description)
+                .font(SB.Typo.caption)
+                .foregroundStyle(SB.Colors.textTertiary.opacity(0.4))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 180)
+
+            SBChip(text: "Coming Soon")
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Glass Card Wrapper (reusable)
+
+struct SBGlassCard<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SB.Space.lg) {
+            content()
+        }
+        .padding(SB.Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.08), Color.white.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.5
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous))
+    }
+}
+
+// MARK: - Slider Row Helper
+
+struct SBSliderRow: View {
+    let label: String
+    @Binding var value: CGFloat
+    let range: ClosedRange<CGFloat>
+    var step: CGFloat = 1
+    var format: String = "%d"
+    var multiplier: CGFloat = 1
+    var onChange: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SB.Space.xs) {
+            HStack {
+                Text(label)
+                    .font(SB.Typo.caption)
+                    .foregroundStyle(SB.Colors.textSecondary)
+                Spacer()
+                valueText
+            }
+            Slider(value: $value, in: range, step: step)
+                .tint(SB.Colors.accent)
+                .onChange(of: value) { _, _ in onChange() }
+        }
+    }
+
+    private var valueText: some View {
+        let text: String
+        if format.contains(".") {
+            text = String(format: format, value * multiplier)
+        } else {
+            text = String(format: format, Int(value * multiplier))
+        }
+        return Text(text)
+            .font(SB.Typo.mono)
+            .foregroundStyle(SB.Colors.textTertiary)
+    }
+}
+
 func sbFormatDuration(_ seconds: Double) -> String {
     let mins = Int(seconds) / 60
     let secs = Int(seconds) % 60

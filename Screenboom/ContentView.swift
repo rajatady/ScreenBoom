@@ -4,9 +4,11 @@ struct ContentView: View {
     @Bindable var project: Project
     var store: ProjectStore
     @Namespace private var heroAnimation
+    @Environment(ExportPanelManager.self) private var exportPanelManager
+    @State private var editorSettings: EditorSettingsController?
 
     private var showEditor: Bool {
-        project.currentProjectID != nil && project.asset != nil
+        project.currentProjectID != nil
     }
 
     var body: some View {
@@ -26,6 +28,13 @@ struct ContentView: View {
             }
         }
         .animation(SB.Anim.springGentle, value: showEditor)
+        .onChange(of: showEditor) { _, isEditor in
+            if isEditor {
+                editorSettings = EditorSettingsController(project: project)
+            } else {
+                editorSettings = nil
+            }
+        }
     }
 
     private var editorView: some View {
@@ -36,24 +45,76 @@ struct ContentView: View {
                     SBSecondaryButton(title: "Back", icon: "chevron.left", compact: true) {
                         project.closeProject()
                     }
+                    .disabled(project.isClosingProject)
+
                     Spacer()
+
+                    // Export button
+                    if !project.isLoadingProject {
+                        exportButton
+                    }
                 }
                 .padding(.horizontal, SB.Space.md)
                 .padding(.vertical, SB.Space.sm)
                 .background(.ultraThinMaterial)
 
-                VideoPreviewView(project: project)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .matchedGeometryEffect(id: "hero-\(project.currentProjectID ?? UUID())", in: heroAnimation)
+                ZStack {
+                    if project.isLoadingProject || project.isClosingProject {
+                        // Lightweight placeholder during transition
+                        loadingPlaceholder
+                    } else {
+                        VideoPreviewView(project: project)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .matchedGeometryEffect(id: "hero-\(project.currentProjectID ?? UUID())", in: heroAnimation)
 
-                Divider()
+                if !project.isLoadingProject && !project.isClosingProject {
+                    Divider()
 
-                TimelineView(project: project)
-                    .frame(height: project.hasCursorData ? 240 : 200)
+                    TimelineView(project: project)
+                        .frame(height: project.hasCursorData ? 240 : 200)
+                }
             }
 
-            ControlsPanel(project: project)
-                .frame(width: 280)
+            if let settings = editorSettings, !project.isLoadingProject, !project.isClosingProject {
+                ControlsPanel(controller: settings)
+                    .frame(width: 316) // 36pt tab bar + 280pt content
+            }
+        }
+    }
+
+    private var loadingPlaceholder: some View {
+        VStack(spacing: SB.Space.lg) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(SB.Colors.accent)
+
+            Text(project.isClosingProject ? "Saving..." : "Loading...")
+                .font(SB.Typo.body)
+                .foregroundStyle(SB.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(SB.Colors.background)
+    }
+
+    private var exportButton: some View {
+        Group {
+            if project.isExporting {
+                HStack(spacing: SB.Space.sm) {
+                    ProgressView(value: project.exportProgress)
+                        .tint(SB.Colors.accent)
+                        .frame(width: 60)
+                    Text("\(Int(project.exportProgress * 100))%")
+                        .font(SB.Typo.mono)
+                        .foregroundStyle(SB.Colors.textSecondary)
+                }
+            } else {
+                SBPrimaryButton(title: "Export", icon: "square.and.arrow.up") {
+                    exportPanelManager.show(project: project)
+                }
+            }
         }
     }
 }

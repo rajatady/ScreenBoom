@@ -130,6 +130,11 @@ final class Project {
     var isExporting: Bool = false
     var exportProgress: Double = 0
 
+    /// True while heavy video loading (player, thumbnails) is pending after transition.
+    var isLoadingProject: Bool = false
+    /// True while saving thumbnail before the close transition.
+    var isClosingProject: Bool = false
+
     private var saveTask: Task<Void, Never>?
 
     // MARK: - Speed Ramping
@@ -543,11 +548,17 @@ final class Project {
             return
         }
 
-        let loadedAsset = AVAsset(url: url)
         self.sourceURL = url
-        self.asset = loadedAsset
+        isLoadingProject = true
 
+        // Defer heavy work until after the shared element transition settles
         Task {
+            // Let the transition animate (springGentle = 0.4s)
+            try? await Task.sleep(for: .milliseconds(450))
+
+            let loadedAsset = AVAsset(url: url)
+            self.asset = loadedAsset
+
             do {
                 let tracks = try await loadedAsset.loadTracks(withMediaType: .video)
                 guard let videoTrack = tracks.first else { return }
@@ -585,9 +596,11 @@ final class Project {
                     await self.player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
                 }
 
+                self.isLoadingProject = false
                 self.onVideoLoaded?(info.id, size, dur.seconds)
             } catch {
                 print("Failed to restore video: \(error)")
+                self.isLoadingProject = false
             }
         }
 
@@ -624,31 +637,46 @@ final class Project {
     // MARK: - Close Project
 
     func closeProject() {
+        guard !isClosingProject else { return }
+        isClosingProject = true
+
         // Save state before clearing
         writeStateNow()
 
-        // Generate thumbnail synchronously before clearing state
-        // (async Task.detached raced with state clearing — thumbnail wasn't written before WelcomeView rendered)
-        if let projectID = currentProjectID, let store, let capturedAsset = asset {
-            let dur = duration
-            let thumbnailURL = store.thumbnailURL(for: projectID)
-            let time = CMTime(seconds: dur.seconds * 0.33, preferredTimescale: 600)
-            let generator = AVAssetImageGenerator(asset: capturedAsset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 600, height: 400)
+        // Capture what we need for thumbnail generation
+        let capturedProjectID = currentProjectID
+        let capturedStore = store
+        let capturedAsset = asset
+        let capturedDuration = duration
 
-            var actualTime = CMTime.zero
-            if let cgImage = try? generator.copyCGImage(at: time, actualTime: &actualTime) {
-                let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                if let tiffData = nsImage.tiffRepresentation,
-                   let bitmap = NSBitmapImageRep(data: tiffData),
-                   let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) {
-                    try? FileManager.default.createDirectory(at: thumbnailURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try? jpegData.write(to: thumbnailURL, options: .atomic)
+        // Generate thumbnail on background, then finish close on main actor
+        Task.detached {
+            if let projectID = capturedProjectID, let store = capturedStore, let asset = capturedAsset {
+                let thumbnailURL = store.thumbnailURL(for: projectID)
+                let time = CMTime(seconds: capturedDuration.seconds * 0.33, preferredTimescale: 600)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 600, height: 400)
+
+                var actualTime = CMTime.zero
+                if let cgImage = try? generator.copyCGImage(at: time, actualTime: &actualTime) {
+                    let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                    if let tiffData = nsImage.tiffRepresentation,
+                       let bitmap = NSBitmapImageRep(data: tiffData),
+                       let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) {
+                        try? FileManager.default.createDirectory(at: thumbnailURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? jpegData.write(to: thumbnailURL, options: .atomic)
+                    }
                 }
             }
-        }
 
+            await MainActor.run {
+                self.finishClose()
+            }
+        }
+    }
+
+    private func finishClose() {
         // Tear down observers and player
         if let token = timeObserver, let player {
             player.removeTimeObserver(token)
@@ -693,6 +721,7 @@ final class Project {
         undoCommitTask?.cancel()
         undoCommitTask = nil
         isRestoringFromUndo = false
+        isClosingProject = false
         currentProjectID = nil
     }
 
@@ -700,11 +729,16 @@ final class Project {
 
     func loadVideo(url: URL) {
         _ = url.startAccessingSecurityScopedResource()
-        let loadedAsset = AVAsset(url: url)
         self.sourceURL = url
-        self.asset = loadedAsset
+        isLoadingProject = true
 
         Task {
+            // Let transition animate first
+            try? await Task.sleep(for: .milliseconds(450))
+
+            let loadedAsset = AVAsset(url: url)
+            self.asset = loadedAsset
+
             do {
                 let tracks = try await loadedAsset.loadTracks(withMediaType: .video)
                 guard let videoTrack = tracks.first else { return }
@@ -720,12 +754,14 @@ final class Project {
                 self.rebuildPlayer()
                 self.generateThumbnails()
                 self.saveState()
+                self.isLoadingProject = false
 
                 if let projectID = self.currentProjectID {
                     self.onVideoLoaded?(projectID, size, dur.seconds)
                 }
             } catch {
                 print("Failed to load video: \(error)")
+                self.isLoadingProject = false
             }
         }
     }
@@ -753,12 +789,17 @@ final class Project {
             self.cursorMetadataURL = session.cursorMetadataURL
         }
 
-        let loadedAsset = AVAsset(url: videoURL)
         self.sourceURL = videoURL
-        self.asset = loadedAsset
         self.recordingSession = session
+        isLoadingProject = true
 
         Task {
+            // Let transition animate first
+            try? await Task.sleep(for: .milliseconds(450))
+
+            let loadedAsset = AVAsset(url: videoURL)
+            self.asset = loadedAsset
+
             do {
                 let tracks = try await loadedAsset.loadTracks(withMediaType: .video)
                 guard let videoTrack = tracks.first else { return }
@@ -775,12 +816,14 @@ final class Project {
                 self.rebuildPlayer()
                 self.generateThumbnails()
                 self.saveState()
+                self.isLoadingProject = false
 
                 if let projectID = self.currentProjectID {
                     self.onVideoLoaded?(projectID, size, dur.seconds)
                 }
             } catch {
                 print("Failed to load recording: \(error)")
+                self.isLoadingProject = false
             }
         }
     }
@@ -983,7 +1026,7 @@ final class Project {
         let videoComp = FrameRenderer.makeVideoComposition(
             for: asset,
             sourceSize: videoSize,
-            settings: renderSettings,
+            settings: previewSettings,
             cursorOverlayState: cursorOverlayState
         )
 
@@ -1055,7 +1098,7 @@ final class Project {
         let videoComp = FrameRenderer.makeVideoComposition(
             for: asset,
             sourceSize: videoSize,
-            settings: renderSettings,
+            settings: previewSettings,
             cursorOverlayState: cursorOverlayState
         )
         playerItem?.videoComposition = videoComp
@@ -1067,7 +1110,21 @@ final class Project {
         saveState()
     }
 
-    var renderSettings: FrameRenderer.Settings {
+    /// Preview always renders at 4K for maximum quality regardless of export resolution.
+    var previewSettings: FrameRenderer.Settings {
+        FrameRenderer.Settings(
+            padding: padding,
+            cornerRadius: cornerRadius,
+            shadowRadius: shadowRadius,
+            shadowOpacity: shadowOpacity,
+            gradientColor1: NSColor(gradientColor1),
+            gradientColor2: NSColor(gradientColor2),
+            outputSize: CGSize(width: 3840, height: 2160)
+        )
+    }
+
+    /// Export uses the user-selected output resolution.
+    var exportSettings: FrameRenderer.Settings {
         FrameRenderer.Settings(
             padding: padding,
             cornerRadius: cornerRadius,
@@ -1285,11 +1342,11 @@ final class Project {
         let videoComp = FrameRenderer.makeVideoComposition(
             for: composition,
             sourceSize: videoSize,
-            settings: renderSettings,
+            settings: exportSettings,
             cursorOverlayState: exportCursorState
         )
 
-        let outputSize = renderSettings.outputSize
+        let outputSize = exportSettings.outputSize
 
         do {
             try await CompositionEngine.export(

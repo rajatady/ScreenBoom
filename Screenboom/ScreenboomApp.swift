@@ -5,12 +5,14 @@ struct ScreenboomApp: App {
     @State private var project = Project()
     @State private var projectStore = ProjectStore()
     @State private var recorderPanelManager = RecorderPanelManager()
+    @State private var exportPanelManager = ExportPanelManager()
 
     var body: some Scene {
         WindowGroup {
             ContentView(project: project, store: projectStore)
                 .frame(minWidth: 1100, minHeight: 700)
                 .environment(recorderPanelManager)
+                .environment(exportPanelManager)
                 .onAppear {
                     projectStore.migrateIfNeeded()
                     let store = projectStore
