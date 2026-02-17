@@ -1,0 +1,56 @@
+name: Build & Release DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          # Use the latest available Xcode on the runner
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Build Release
+        run: |
+          xcodebuild -project Screenboom.xcodeproj \
+            -scheme Screenboom \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create DMG
+        run: |
+          APP_PATH="build/Build/Products/Release/Screenboom.app"
+
+          # Create a staging folder with the app + Applications symlink
+          mkdir -p dmg-staging
+          cp -R "$APP_PATH" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+
+          # Build the DMG
+          hdiutil create \
+            -volname "Screenboom" \
+            -srcfolder dmg-staging \
+            -ov \
+            -format UDZO \
+            "Screenboom-${GITHUB_REF_NAME}.dmg"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "Screenboom-${GITHUB_REF_NAME}.dmg" \
+            --title "Screenboom ${GITHUB_REF_NAME}" \
+            --generate-notes
