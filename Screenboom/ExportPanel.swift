@@ -99,10 +99,10 @@ struct ExportPopupView: View {
                 Spacer()
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(SB.Icons.sm)
                         .foregroundStyle(SB.Colors.textTertiary)
-                        .frame(width: 24, height: 24)
-                        .background(Circle().fill(Color.white.opacity(0.06)))
+                        .frame(width: SB.Space.xl, height: SB.Space.xl)
+                        .background(Circle().fill(SB.Glass.subtle))
                 }
                 .buttonStyle(.plain)
             }
@@ -161,7 +161,7 @@ struct ExportPopupView: View {
             RoundedRectangle(cornerRadius: SB.Radius.lg, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
+                        colors: [SB.Glass.medium, SB.Glass.faint], // sb-exempt
                         startPoint: .top,
                         endPoint: .bottom
                     ),
@@ -169,7 +169,7 @@ struct ExportPopupView: View {
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: SB.Radius.lg, style: .continuous))
-        .shadow(color: .black.opacity(0.3), radius: 20, y: 8)
+        .sbShadow(SB.Shadows.popup)
     }
 
     private var currentResolutionLabel: String? {

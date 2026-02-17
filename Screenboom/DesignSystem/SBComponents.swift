@@ -1,92 +1,6 @@
 import SwiftUI
 
-// MARK: - Design Tokens
-
-/// Screenboom's design language — Airbnb-inspired warmth meets liquid glass.
-/// Warm dark palette, coral accents, generous spacing, soft depth, glass surfaces.
-/// Change these tokens to reskin the entire app.
-enum SB {
-
-    // MARK: - Color Palette
-
-    enum Colors {
-        // Base surfaces — warm charcoal, not cold gray
-        static let background = Color(red: 0.09, green: 0.09, blue: 0.10)
-        static let surface = Color(white: 0.13)
-        static let surfaceRaised = Color(white: 0.16)
-        static let surfaceHover = Color(white: 0.19)
-        static let surfaceOverlay = Color.black.opacity(0.5)
-
-        // Borders — warm and subtle
-        static let border = Color.white.opacity(0.07)
-        static let borderHover = Color.white.opacity(0.13)
-        static let borderSubtle = Color.white.opacity(0.04)
-
-        // Text — warm whites
-        static let textPrimary = Color(white: 0.95)
-        static let textSecondary = Color(white: 0.62)
-        static let textTertiary = Color(white: 0.40)
-
-        // Accent — warm coral (Airbnb-inspired)
-        static let accent = Color(red: 1.0, green: 0.35, blue: 0.37)
-        static let accentSubtle = Color(red: 1.0, green: 0.35, blue: 0.37).opacity(0.12)
-        static let accentHover = Color(red: 1.0, green: 0.28, blue: 0.30)
-
-        // Semantic
-        static let success = Color(red: 0.30, green: 0.85, blue: 0.55)
-        static let warning = Color(red: 1.0, green: 0.78, blue: 0.28)
-        static let destructive = Color(red: 1.0, green: 0.30, blue: 0.30)
-    }
-
-    // MARK: - Typography — rounded, generous, clear hierarchy
-
-    enum Typo {
-        static let heroTitle = Font.system(size: 32, weight: .bold, design: .rounded)
-        static let pageTitle = Font.system(size: 22, weight: .bold, design: .rounded)
-        static let sectionTitle = Font.system(size: 15, weight: .semibold, design: .rounded)
-        static let body = Font.system(size: 13, design: .rounded)
-        static let bodyMedium = Font.system(size: 13, weight: .medium, design: .rounded)
-        static let caption = Font.system(size: 11, design: .rounded)
-        static let captionMedium = Font.system(size: 11, weight: .medium, design: .rounded)
-        static let mono = Font.system(size: 10, weight: .medium, design: .monospaced)
-        static let timer = Font.system(size: 48, weight: .ultraLight, design: .monospaced)
-        static let label = Font.system(size: 12, weight: .semibold, design: .rounded)
-    }
-
-    // MARK: - Spacing — generous, breathable
-
-    enum Space {
-        static let xs: CGFloat = 4
-        static let sm: CGFloat = 8
-        static let md: CGFloat = 12
-        static let lg: CGFloat = 16
-        static let xl: CGFloat = 24
-        static let xxl: CGFloat = 32
-        static let xxxl: CGFloat = 48
-    }
-
-    // MARK: - Corners — rounder than typical
-
-    enum Radius {
-        static let sm: CGFloat = 8
-        static let md: CGFloat = 12
-        static let lg: CGFloat = 16
-        static let xl: CGFloat = 24
-        static let pill: CGFloat = 100
-    }
-
-    // MARK: - Animation
-
-    enum Anim {
-        static let springSnappy = Animation.spring(duration: 0.3, bounce: 0.15)
-        static let springGentle = Animation.spring(duration: 0.4, bounce: 0.1)
-        static let springBouncy = Animation.spring(duration: 0.5, bounce: 0.25)
-        static let fadeQuick = Animation.easeOut(duration: 0.15)
-        static let fadeMedium = Animation.easeInOut(duration: 0.25)
-    }
-}
-
-// MARK: - Glass Card
+// MARK: - Glass Card Modifier
 
 struct SBCardModifier: ViewModifier {
     var isHovered: Bool = false
@@ -97,19 +11,15 @@ struct SBCardModifier: ViewModifier {
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.ultraThinMaterial)
-                    .shadow(
-                        color: .black.opacity(isHovered ? 0.28 : 0.12),
-                        radius: isHovered ? 20 : 8,
-                        y: isHovered ? 8 : 3
-                    )
+                    .sbShadow(isHovered ? SB.Shadows.cardHover : SB.Shadows.card)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(isHovered ? 0.16 : 0.08),
-                                Color.white.opacity(isHovered ? 0.06 : 0.02)
+                                isHovered ? SB.Glass.strong : SB.Glass.base,
+                                isHovered ? SB.Glass.subtle : SB.Glass.faint // sb-exempt
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -137,7 +47,7 @@ struct SBGlassPanel: ViewModifier {
             .background(.ultraThinMaterial)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(SB.Glass.subtle)
                     .frame(width: 0.5)
             }
     }
@@ -172,11 +82,11 @@ struct SBChip: View {
         Text(text)
             .font(SB.Typo.mono)
             .foregroundStyle(SB.Colors.textSecondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, SB.Space.sm)
+            .padding(.vertical, SB.Space.xxs + 1)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(SB.Glass.subtle)
             )
     }
 }
@@ -196,14 +106,14 @@ struct SBPrimaryButton: View {
         Button(action: action) {
             Label(title, systemImage: icon)
                 .font(SB.Typo.label)
-                .foregroundStyle(.white)
+                .foregroundStyle(.white) // sb-exempt — button text is always white
                 .frame(width: width)
                 .padding(.horizontal, SB.Space.lg)
                 .padding(.vertical, SB.Space.md)
                 .background(
                     Capsule()
                         .fill(isHovered ? SB.Colors.accentHover : tint)
-                        .shadow(color: tint.opacity(0.35), radius: isHovered ? 12 : 6, y: isHovered ? 4 : 2)
+                        .sbShadow(isHovered ? SB.Shadows.buttonHover(tint) : SB.Shadows.button(tint))
                 )
         }
         .buttonStyle(.plain)
@@ -232,11 +142,11 @@ struct SBSecondaryButton: View {
                 .padding(.vertical, compact ? SB.Space.sm : SB.Space.md)
                 .background(
                     Capsule()
-                        .fill(isHovered ? Color.white.opacity(0.1) : Color.white.opacity(0.05))
+                        .fill(isHovered ? SB.Glass.medium : SB.Glass.faint) // sb-exempt
                 )
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.white.opacity(isHovered ? 0.15 : 0.08), lineWidth: 0.5)
+                        .strokeBorder(isHovered ? SB.Glass.strong : SB.Glass.base, lineWidth: 0.5) // sb-exempt
                 )
         }
         .buttonStyle(.plain)
@@ -258,13 +168,13 @@ struct SBIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: size * 0.42, weight: .medium))
+                .font(.system(size: size * 0.42, weight: .medium)) // sb-exempt — dynamic size based on button size
                 .foregroundStyle(destructive && isHovered ? SB.Colors.destructive : SB.Colors.textPrimary)
                 .frame(width: size, height: size)
                 .background(
                     Circle()
                         .fill(.ultraThickMaterial)
-                        .shadow(color: .black.opacity(0.2), radius: 4, y: 1)
+                        .sbShadow(SB.Shadows.subtle)
                 )
         }
         .buttonStyle(.plain)
@@ -284,12 +194,12 @@ struct SBGlassTabs: View {
     @State private var hoveredItem: String?
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: SB.Space.xxs) {
             ForEach(items, id: \.self) { item in
                 tabButton(item)
             }
         }
-        .padding(2)
+        .padding(SB.Space.xxs)
         .background(tabBackground)
         .overlay(tabBorder)
         .animation(SB.Anim.springSnappy, value: selection)
@@ -317,12 +227,12 @@ struct SBGlassTabs: View {
 
     private var tabBackground: some View {
         RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
-            .fill(Color.white.opacity(0.04))
+            .fill(SB.Glass.faint) // sb-exempt
     }
 
     private var tabBorder: some View {
         RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+            .strokeBorder(SB.Glass.subtle, lineWidth: 0.5)
     }
 }
 
@@ -334,11 +244,10 @@ struct SBPageBackground: View {
     var body: some View {
         ZStack {
             SB.Colors.background
-            // Warm ambient glow
             RadialGradient(
                 colors: [
                     SB.Colors.accent.opacity(accentOpacity),
-                    Color.clear
+                    Color.clear // sb-exempt — clear is not a raw color violation
                 ],
                 center: .topLeading,
                 startRadius: 50,
@@ -346,8 +255,8 @@ struct SBPageBackground: View {
             )
             RadialGradient(
                 colors: [
-                    Color.purple.opacity(accentOpacity * 0.5),
-                    Color.clear
+                    Color.purple.opacity(accentOpacity * 0.5), // sb-exempt — ambient glow accent
+                    Color.clear // sb-exempt
                 ],
                 center: .bottomTrailing,
                 startRadius: 50,
@@ -369,14 +278,12 @@ struct SBPulsingDot: View {
         Circle()
             .fill(color)
             .frame(width: size, height: size)
-            .shadow(color: color.opacity(0.6), radius: 6)
+            .shadow(color: color.opacity(0.6), radius: 6) // sb-exempt — dynamic color based on prop
             .opacity(isPulsing ? 0.3 : 1.0)
-            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+            .animation(SB.Anim.pulse, value: isPulsing)
             .onAppear { isPulsing = true }
     }
 }
-
-// MARK: - Duration Formatter
 
 // MARK: - Icon Tab Bar (vertical strip)
 
@@ -393,7 +300,7 @@ struct SBIconTabBar<Tab: Hashable>: View {
             }
         }
         .padding(.vertical, SB.Space.sm)
-        .frame(width: 36)
+        .frame(width: SB.Layout.tabBarWidth)
     }
 
     private func tabButton(_ tab: (id: Tab, icon: String, label: String, enabled: Bool)) -> some View {
@@ -406,26 +313,25 @@ struct SBIconTabBar<Tab: Hashable>: View {
             }
         } label: {
             ZStack {
-                // Accent indicator bar (left edge)
                 if isSelected && tab.enabled {
-                    RoundedRectangle(cornerRadius: 1.5)
+                    RoundedRectangle(cornerRadius: SB.Radius.xxs)
                         .fill(SB.Colors.accent)
-                        .frame(width: 3, height: 16)
+                        .frame(width: 3, height: SB.Space.lg)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .transition(.scale.combined(with: .opacity))
                 }
 
                 Image(systemName: tab.icon)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(SB.Icons.md)
                     .foregroundStyle(
                         !tab.enabled ? SB.Colors.textTertiary.opacity(0.5) :
                         isSelected ? SB.Colors.accent :
                         isHovered ? SB.Colors.textPrimary :
                         SB.Colors.textSecondary
                     )
-                    .frame(width: 32, height: 32)
+                    .frame(width: SB.Layout.tabBarWidth - SB.Space.xs, height: SB.Layout.tabBarWidth - SB.Space.xs)
             }
-            .frame(width: 36, height: 32)
+            .frame(width: SB.Layout.tabBarWidth, height: SB.Layout.tabBarWidth - SB.Space.xs)
             .background(
                 RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
                     .fill(isSelected && tab.enabled ? SB.Colors.accentSubtle : .clear)
@@ -451,7 +357,7 @@ struct SBComingSoonPlaceholder: View {
             Spacer()
 
             Image(systemName: icon)
-                .font(.system(size: 48, weight: .ultraLight))
+                .font(SB.Icons.hero)
                 .foregroundStyle(SB.Colors.textTertiary.opacity(0.2))
 
             Text(title)
@@ -491,7 +397,7 @@ struct SBGlassCard<Content: View>: View {
             RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.08), Color.white.opacity(0.02)],
+                        colors: [SB.Glass.base, SB.Glass.faint], // sb-exempt
                         startPoint: .top,
                         endPoint: .bottom
                     ),
@@ -557,7 +463,7 @@ struct SBOptionSwatch: View {
         Button(action: action) {
             VStack(spacing: SB.Space.xs) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(SB.Icons.base)
                     .foregroundStyle(isSelected ? SB.Colors.accent : SB.Colors.textSecondary)
                     .frame(height: 20)
                 Text(label)
@@ -569,12 +475,12 @@ struct SBOptionSwatch: View {
             .padding(.vertical, SB.Space.sm)
             .background(
                 RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
-                    .fill(isSelected ? SB.Colors.accentSubtle : (isHovered ? Color.white.opacity(0.06) : Color.white.opacity(0.03)))
+                    .fill(isSelected ? SB.Colors.accentSubtle : (isHovered ? SB.Glass.subtle : SB.Glass.faint))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
                     .strokeBorder(
-                        isSelected ? SB.Colors.accent.opacity(0.5) : Color.white.opacity(isHovered ? 0.1 : 0.05),
+                        isSelected ? SB.Colors.accent.opacity(0.5) : (isHovered ? SB.Glass.medium : SB.Glass.faint), // sb-exempt
                         lineWidth: isSelected ? 1.5 : 0.5
                     )
             )
@@ -584,17 +490,4 @@ struct SBOptionSwatch: View {
         .animation(SB.Anim.fadeQuick, value: isSelected)
         .animation(SB.Anim.fadeQuick, value: isHovered)
     }
-}
-
-func sbFormatDuration(_ seconds: Double) -> String {
-    let mins = Int(seconds) / 60
-    let secs = Int(seconds) % 60
-    return String(format: "%d:%02d", mins, secs)
-}
-
-func sbFormatDurationPrecise(_ seconds: TimeInterval) -> String {
-    let mins = Int(seconds) / 60
-    let secs = Int(seconds) % 60
-    let tenths = Int((seconds * 10).truncatingRemainder(dividingBy: 10))
-    return String(format: "%02d:%02d.%d", mins, secs, tenths)
 }

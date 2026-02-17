@@ -187,8 +187,8 @@ final class RegionSelectionView: NSView {
     private let handleSize: CGFloat = 10
     private let edgeBand: CGFloat = 16
     private let overlayColor = NSColor.black.withAlphaComponent(0.4)
-    private let accentColor = NSColor(red: 1.0, green: 0.35, blue: 0.37, alpha: 1.0)
-    private let accentFillColor = NSColor(red: 1.0, green: 0.35, blue: 0.37, alpha: 0.05)
+    private let accentColor = SB.Colors.accentNS
+    private let accentFillColor = SB.Colors.accentNS.withAlphaComponent(0.05)
     private let dimensionFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
     private let hintFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     private let labelBgColor = NSColor.black.withAlphaComponent(0.75)

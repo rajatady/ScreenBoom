@@ -82,10 +82,10 @@ struct CountdownOverlayView: View {
                 .blur(radius: 25)
 
             Text("\(model.count)")
-                .font(.system(size: 80, weight: .ultraLight, design: .rounded))
-                .foregroundStyle(.white)
+                .font(SB.Typo.countdown)
+                .foregroundStyle(SB.Colors.textPrimary)
                 .contentTransition(.numericText())
-                .animation(.easeInOut(duration: 0.3), value: model.count)
+                .animation(SB.Anim.countTick, value: model.count)
         }
         .frame(width: 200, height: 200)
     }

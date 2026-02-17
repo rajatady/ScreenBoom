@@ -19,7 +19,7 @@ struct ControlsPanel: View {
 
             // Thin separator
             Rectangle()
-                .fill(Color.white.opacity(0.06))
+                .fill(SB.Glass.subtle)
                 .frame(width: 0.5)
 
             // Content area
@@ -85,7 +85,7 @@ struct ZoomFocusPicker: View {
 
             ZStack {
                 // Video area background
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: SB.Radius.xs, style: .continuous)
                     .fill(SB.Colors.surface)
 
                 // Zoom crop area (dashed rectangle showing what's visible when zoomed)
@@ -94,7 +94,7 @@ struct ZoomFocusPicker: View {
                 let cropX = max(0, min(videoSize.width - cropW, focusX - cropW / 2))
                 let cropY = max(0, min(videoSize.height - cropH, focusY - cropH / 2))
 
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: SB.Radius.xxs)
                     .strokeBorder(SB.Colors.accent, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                     .frame(width: cropW * scaleX, height: cropH * scaleY)
                     .position(
@@ -103,7 +103,7 @@ struct ZoomFocusPicker: View {
                     )
 
                 // Crop area fill
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: SB.Radius.xxs)
                     .fill(SB.Colors.accent.opacity(0.08))
                     .frame(width: cropW * scaleX, height: cropH * scaleY)
                     .position(
@@ -144,10 +144,10 @@ struct ZoomFocusPicker: View {
         }
         .aspectRatio(videoSize.width / videoSize.height, contentMode: .fit)
         .frame(maxWidth: .infinity)
-        .frame(height: 140)
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .frame(height: SB.Layout.focusPickerHeight)
+        .clipShape(RoundedRectangle(cornerRadius: SB.Radius.xs, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
+            RoundedRectangle(cornerRadius: SB.Radius.xs, style: .continuous)
                 .strokeBorder(SB.Colors.border, lineWidth: 0.5)
         )
     }

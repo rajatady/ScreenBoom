@@ -179,10 +179,10 @@ struct ContextualInspectorView: View {
     private var dismissButton: some View {
         Button(action: { controller.dismissInspector() }) {
             Image(systemName: "xmark")
-                .font(.system(size: 10, weight: .bold))
+                .font(SB.Icons.xs)
                 .foregroundStyle(SB.Colors.textTertiary)
                 .frame(width: 20, height: 20)
-                .background(Circle().fill(Color.white.opacity(0.06)))
+                .background(Circle().fill(SB.Glass.subtle))
         }
         .buttonStyle(.plain)
     }
@@ -198,7 +198,7 @@ struct ContextualInspectorView: View {
                 .fill(.thinMaterial)
         )
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: SB.Radius.xxs)
                 .fill(SB.Colors.accent)
                 .frame(width: 3)
                 .padding(.vertical, SB.Space.sm)
@@ -207,7 +207,7 @@ struct ContextualInspectorView: View {
             RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.1), Color.white.opacity(0.03)],
+                        colors: [SB.Glass.medium, SB.Glass.faint], // sb-exempt
                         startPoint: .top,
                         endPoint: .bottom
                     ),

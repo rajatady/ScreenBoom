@@ -108,11 +108,11 @@ struct AppearanceTabView: View {
                         Text(preset.name)
                             .font(SB.Typo.captionMedium)
                             .foregroundStyle(isActive ? SB.Colors.textPrimary : SB.Colors.textSecondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, SB.Space.sm + SB.Space.xxs)
+                            .padding(.vertical, SB.Space.xs + 1)
                             .background(
                                 Capsule()
-                                    .fill(isActive ? SB.Colors.accentSubtle : Color.white.opacity(0.06))
+                                    .fill(isActive ? SB.Colors.accentSubtle : SB.Glass.subtle)
                             )
                             .overlay(
                                 Capsule()
@@ -137,7 +137,7 @@ struct AppearanceTabView: View {
                 if case .image = controller.backgroundStyle {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(SB.Colors.success)
-                        .font(.system(size: 14))
+                        .font(SB.Icons.md)
                 }
             }
         }
@@ -199,7 +199,7 @@ struct AppearanceTabView: View {
                 LinearGradient(colors: [br.toColor().opacity(0.5), .clear], startPoint: .bottomTrailing, endPoint: .topLeading)
             }
         default:
-            Color.gray
+            SB.Colors.surface
         }
     }
 

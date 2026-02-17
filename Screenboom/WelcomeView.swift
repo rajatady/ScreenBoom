@@ -63,8 +63,8 @@ struct WelcomeView: View {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 120, height: 120)
-                    .shadow(color: .black.opacity(0.2), radius: 30, y: 15)
-                    .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
+                    .sbShadow(SB.Shadows.popup)
+                    .shadow(color: SB.Colors.surfaceOverlay.opacity(0.2), radius: 10, y: 5) // sb-exempt — layered shadow
 
                 VStack(spacing: SB.Space.sm) {
                     Text("Screenboom")
@@ -72,7 +72,7 @@ struct WelcomeView: View {
                         .foregroundStyle(SB.Colors.textPrimary)
 
                     Text("Make your screen recordings look professional")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .font(SB.Typo.subtitle)
                         .foregroundStyle(SB.Colors.textSecondary)
                 }
             }
@@ -92,7 +92,7 @@ struct WelcomeView: View {
 
             HStack(spacing: SB.Space.sm) {
                 Image(systemName: "arrow.down.doc")
-                    .font(.system(size: 11))
+                    .font(SB.Icons.sm)
                 Text("Or drag and drop a video file")
                     .font(SB.Typo.caption)
             }
@@ -219,7 +219,7 @@ private struct ProjectCard: View {
             }
 
             // Info area
-            VStack(alignment: .leading, spacing: SB.Space.xs + 2) {
+            VStack(alignment: .leading, spacing: SB.Space.xs + SB.Space.xxs) {
                 if isEditing {
                     TextField("Project name", text: $editingName)
                         .font(SB.Typo.bodyMedium)
@@ -250,7 +250,7 @@ private struct ProjectCard: View {
                     .foregroundStyle(SB.Colors.textTertiary)
             }
             .padding(.horizontal, SB.Space.lg)
-            .padding(.vertical, SB.Space.md + 2)
+            .padding(.vertical, SB.Space.md + SB.Space.xxs)
         }
         .sbCard(hovered: isHovered)
         .onHover { hovering in
@@ -282,7 +282,7 @@ private struct ProjectCard: View {
                     endPoint: .bottomTrailing
                 )
                 Image(systemName: "film")
-                    .font(.system(size: 30, weight: .ultraLight))
+                    .font(SB.Icons.hero)
                     .foregroundStyle(SB.Colors.textTertiary.opacity(0.4))
             }
         }

@@ -121,25 +121,25 @@ struct RecorderBarView: View {
         } label: {
             HStack(spacing: SB.Space.sm) {
                 Image(systemName: flow.captureMode == .display ? "display" : "macwindow")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(SB.Icons.sm)
                     .foregroundStyle(SB.Colors.textTertiary)
                 Text(sourceLabel)
                     .font(SB.Typo.bodyMedium)
                     .foregroundStyle(SB.Colors.textPrimary)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(SB.Icons.xs)
                     .foregroundStyle(SB.Colors.textTertiary)
             }
             .padding(.horizontal, SB.Space.md)
             .padding(.vertical, SB.Space.sm)
             .background(
                 RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(SB.Glass.subtle)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                    .strokeBorder(SB.Glass.base, lineWidth: 0.5)
             )
         }
         .menuStyle(.borderlessButton)
@@ -155,10 +155,10 @@ struct RecorderBarView: View {
             } label: {
                 HStack(spacing: SB.Space.sm) {
                     Image(systemName: "rectangle.dashed")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(SB.Icons.sm)
                         .foregroundStyle(SB.Colors.accent)
                     Text("\(Int(region.width))\u{00D7}\(Int(region.height))")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(SB.Typo.monoMd)
                         .foregroundStyle(SB.Colors.textPrimary)
                 }
                 .padding(.horizontal, SB.Space.md)
@@ -190,7 +190,7 @@ struct RecorderBarView: View {
             } label: {
                 HStack(spacing: SB.Space.sm) {
                     Image(systemName: "rectangle.dashed")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(SB.Icons.sm)
                         .foregroundStyle(SB.Colors.textTertiary)
                     Text("Select area")
                         .font(SB.Typo.bodyMedium)
@@ -229,7 +229,7 @@ struct RecorderBarView: View {
     private func countdownContent(_ count: Int) -> some View {
         HStack(spacing: SB.Space.lg) {
             Text("\(count)")
-                .font(.system(size: 28, weight: .light, design: .rounded))
+                .font(SB.Typo.counterLg)
                 .foregroundStyle(SB.Colors.accent)
                 .contentTransition(.numericText())
                 .frame(width: 32)
@@ -244,7 +244,7 @@ struct RecorderBarView: View {
                 flow.cancelCountdown()
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: count)
+        .animation(SB.Anim.countTick, value: count)
     }
 
     // MARK: - Recording
@@ -254,7 +254,7 @@ struct RecorderBarView: View {
             SBPulsingDot(color: SB.Colors.accent, size: 8)
 
             Text(sbFormatDurationPrecise(flow.recordingDuration))
-                .font(.system(size: 18, weight: .light, design: .monospaced))
+                .font(SB.Typo.timerSm)
                 .foregroundStyle(SB.Colors.textPrimary)
                 .contentTransition(.numericText())
 
@@ -264,8 +264,8 @@ struct RecorderBarView: View {
                 Task { await flow.stopRecording() }
             } label: {
                 HStack(spacing: SB.Space.sm) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(.white)
+                    RoundedRectangle(cornerRadius: SB.Radius.xxs)
+                        .fill(SB.Colors.textPrimary)
                         .frame(width: 10, height: 10)
                     Text("Stop")
                         .font(SB.Typo.label)
@@ -300,7 +300,7 @@ struct RecorderBarView: View {
     private func failedContent(message: String) -> some View {
         HStack(spacing: SB.Space.lg) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16))
+                .font(SB.Icons.base)
                 .foregroundStyle(SB.Colors.warning)
 
             Text(message)
@@ -331,22 +331,22 @@ struct RecorderBarView: View {
     }
 
     private var thinDivider: some View {
-        RoundedRectangle(cornerRadius: 0.5)
-            .fill(Color.white.opacity(0.08))
-            .frame(width: 1, height: 24)
+        RoundedRectangle(cornerRadius: 0.5) // sb-exempt — sub-pixel radius
+            .fill(SB.Glass.base)
+            .frame(width: 1, height: SB.Space.xl)
     }
 
     private var barBackground: some View {
         RoundedRectangle(cornerRadius: SB.Radius.xl, style: .continuous)
             .fill(.ultraThinMaterial)
-            .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+            .sbShadow(SB.Shadows.float)
             .overlay(
                 RoundedRectangle(cornerRadius: SB.Radius.xl, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.14),
-                                Color.white.opacity(0.04)
+                                SB.Glass.strong, // sb-exempt
+                                SB.Glass.faint   // sb-exempt
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing

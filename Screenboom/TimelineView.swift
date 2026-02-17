@@ -10,7 +10,7 @@ struct TimelineView: View {
     @State private var zoomTrackHoverTime: Double?
     private let splitGap: CGFloat = 4
 
-    private let zoomTrackHeight: CGFloat = 36
+    private let zoomTrackHeight: CGFloat = SB.Layout.zoomTrackHeight
     private let edgeHitZone: CGFloat = 12
 
     private struct ZoomDrag: Equatable {
@@ -24,8 +24,8 @@ struct TimelineView: View {
     var body: some View {
         VStack(spacing: 0) {
             segmentControlsBar
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, SB.Space.md)
+                .padding(.vertical, SB.Space.xs + 2)
 
             Divider()
 
@@ -145,13 +145,13 @@ struct TimelineView: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, SB.Space.md)
 
             Divider()
 
             playbackControls
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, SB.Space.md)
+                .padding(.vertical, SB.Space.xs + 2)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -266,10 +266,11 @@ struct TimelineView: View {
     // MARK: - Segment Controls Bar
 
     var segmentControlsBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: SB.Space.md) {
             Button("Split") {
                 project.addSplit(at: project.playheadTime)
             }
+            .font(SB.Typo.captionMedium)
             .buttonStyle(.bordered)
             .controlSize(.small)
 
@@ -280,13 +281,14 @@ struct TimelineView: View {
                 Button(seg.isEnabled ? "Disable" : "Enable") {
                     project.toggleSegment(selectedId)
                 }
+                .font(SB.Typo.captionMedium)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
 
-                HStack(spacing: 4) {
+                HStack(spacing: SB.Space.xs) {
                     Text("Speed:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(SB.Typo.caption)
+                        .foregroundStyle(SB.Colors.textSecondary)
                     Picker("", selection: Binding(
                         get: { seg.speed },
                         set: { project.setSpeed($0, for: selectedId) }
@@ -317,6 +319,7 @@ struct TimelineView: View {
                         project.removeSplit(at: splitIdx)
                         project.selectedSegmentId = nil
                     }
+                    .font(SB.Typo.captionMedium)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
@@ -332,7 +335,7 @@ struct TimelineView: View {
             .help(project.showThumbnails ? "Solid view" : "Frame view")
 
             // Timeline zoom controls
-            HStack(spacing: 6) {
+            HStack(spacing: SB.Space.xs + 2) {
                 Button(action: { timelineZoom = max(1, timelineZoom - 1) }) {
                     Image(systemName: "minus.magnifyingglass")
                 }
@@ -340,8 +343,8 @@ struct TimelineView: View {
                 .disabled(timelineZoom <= 1)
 
                 Text("\(Int(timelineZoom))x")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(SB.Typo.mono)
+                    .foregroundStyle(SB.Colors.textSecondary)
                     .frame(width: 30)
 
                 Button(action: { timelineZoom = min(20, timelineZoom + 1) }) {
@@ -354,8 +357,8 @@ struct TimelineView: View {
             }
 
             Text(String(format: "%.1fs", project.totalOutputDuration))
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(SB.Typo.mono)
+                .foregroundStyle(SB.Colors.textSecondary)
         }
     }
 
@@ -365,8 +368,8 @@ struct TimelineView: View {
         HStack(spacing: 0) {
             if project.thumbnails.isEmpty {
                 Rectangle()
-                    .fill(Color(nsColor: .darkGray).opacity(0.3))
-                    .frame(width: width, height: 80)
+                    .fill(SB.Colors.surface.opacity(0.3))
+                    .frame(width: width, height: SB.Layout.segmentTrackHeight)
             } else {
                 let thumbWidth = width / CGFloat(project.thumbnails.count)
                 ForEach(Array(project.thumbnails.enumerated()), id: \.offset) { _, cgImage in
@@ -378,7 +381,7 @@ struct TimelineView: View {
                 }
             }
         }
-        .frame(height: 80)
+        .frame(height: SB.Layout.segmentTrackHeight)
     }
 
     // MARK: - Segment Overlays (visual only, no separate gestures)
@@ -400,16 +403,16 @@ struct TimelineView: View {
                     // Selection tint (in thumbnail mode)
                     if project.showThumbnails && isSelected {
                         RoundedRectangle(cornerRadius: cr)
-                            .fill(Color.accentColor.opacity(0.2))
+                            .fill(SB.Colors.accent.opacity(0.2))
                     }
 
                     // Disabled overlay
                     if !seg.isEnabled {
                         RoundedRectangle(cornerRadius: cr)
-                            .fill(Color.black.opacity(project.showThumbnails ? 0.55 : 0))
+                            .fill(SB.Colors.surfaceOverlay.opacity(project.showThumbnails ? 1.1 : 0))
                         Text("Disabled")
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.6))
+                            .font(SB.Typo.caption)
+                            .foregroundStyle(SB.Colors.textSecondary)
                     }
 
                     // Speed badge
@@ -417,20 +420,20 @@ struct TimelineView: View {
                         VStack {
                             Spacer()
                             Text("\(String(format: "%.1f", seg.speed))x")
-                                .font(.system(.caption2, design: .monospaced))
+                                .font(SB.Typo.mono)
                                 .bold()
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(.blue.opacity(0.75)))
-                                .padding(.bottom, 4)
+                                .foregroundStyle(SB.Colors.textPrimary)
+                                .padding(.horizontal, SB.Space.xs + 1)
+                                .padding(.vertical, SB.Space.xxs)
+                                .background(Capsule().fill(SB.Colors.accent.opacity(0.75)))
+                                .padding(.bottom, SB.Space.xs)
                         }
                     }
 
                     // Border — always visible, contrasting
                     RoundedRectangle(cornerRadius: cr)
                         .stroke(
-                            isSelected ? Color.accentColor : Color.gray.opacity(0.5),
+                            isSelected ? SB.Colors.accent : SB.Colors.textTertiary.opacity(0.5),
                             lineWidth: isSelected ? 2.5 : 1
                         )
                 }
@@ -443,12 +446,12 @@ struct TimelineView: View {
 
     private func segmentFillColor(seg: Segment, isSelected: Bool) -> Color {
         if !seg.isEnabled {
-            return isSelected ? Color(white: 0.25) : Color(white: 0.15)
+            return isSelected ? SB.Colors.surfaceRaised : SB.Colors.surface
         }
         if isSelected {
-            return Color.accentColor.opacity(0.3)
+            return SB.Colors.accent.opacity(0.3)
         }
-        return Color(white: 0.22)
+        return SB.Colors.surfaceHover.opacity(0.85)
     }
 
     // MARK: - Segment Shapes (mask for thumbnails + gap creation)
@@ -458,7 +461,7 @@ struct TimelineView: View {
             // Invisible spacer to anchor the ZStack at full width —
             // without this, .offset() children make the ZStack narrower
             // than the thumbnail strip, causing the mask to mis-center.
-            Color.clear.frame(width: width, height: 80)
+            Color.clear.frame(width: width, height: SB.Layout.segmentTrackHeight) // sb-exempt
 
             ForEach(Array(project.segments.enumerated()), id: \.element.id) { index, _ in
                 let frame = segmentVisualFrame(index: index, totalWidth: width)
@@ -495,7 +498,7 @@ struct TimelineView: View {
         if let fraction = hoverFraction {
             let x = fraction * width
             Rectangle()
-                .fill(Color.white.opacity(0.5))
+                .fill(SB.Glass.strong) // sb-exempt — hover line
                 .frame(width: 1, height: height + 10)
                 .offset(x: max(0, min(width - 1, x)))
                 .allowsHitTesting(false)
@@ -510,9 +513,9 @@ struct TimelineView: View {
         let x = fraction * width
 
         return Rectangle()
-            .fill(Color.red)
+            .fill(SB.Colors.playhead)
             .frame(width: 2, height: height + 6)
-            .shadow(color: .red.opacity(0.5), radius: 4)
+            .sbShadow(SB.Shadows.playhead)
             .offset(x: max(0, min(width - 2, x)) - 1)
             .allowsHitTesting(false)
     }
@@ -531,8 +534,8 @@ struct TimelineView: View {
             let dur = project.duration.seconds
             let current = min(project.currentTime, dur)
             Text("\(formatTime(current)) / \(formatTime(dur))")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(SB.Typo.mono)
+                .foregroundStyle(SB.Colors.textSecondary)
 
             Spacer()
         }
@@ -567,25 +570,25 @@ struct TimelineView: View {
                     let ghostHeight = zoomTrackHeight * 0.45
 
                     ZStack {
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: SB.Radius.xs)
                             .fill(SB.Colors.accent.opacity(0.12))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 4)
+                                RoundedRectangle(cornerRadius: SB.Radius.xs)
                                     .stroke(SB.Colors.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                             )
                         Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(SB.Icons.sm)
                             .foregroundStyle(SB.Colors.accent.opacity(0.6))
                     }
                     .frame(width: ghostWidth, height: ghostHeight)
                     .offset(x: ghostStartX, y: (zoomTrackHeight - ghostHeight) / 2 - 2)
                     .allowsHitTesting(false)
                     .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.15), value: zoomTrackHoverTime != nil)
+                    .animation(SB.Anim.fadeQuick, value: zoomTrackHoverTime != nil)
                 }
             }
         }
-        .padding(.top, 2)
+        .padding(.top, SB.Space.xxs)
     }
 
     private func zoomRegionShape(region: ZoomRegion, totalWidth: CGFloat, duration: Double) -> some View {
@@ -608,10 +611,10 @@ struct TimelineView: View {
 
         let fillColor = region.isEnabled
             ? (isSelected ? SB.Colors.accent.opacity(0.45) : SB.Colors.accent.opacity(0.25))
-            : Color.gray.opacity(0.2)
+            : SB.Colors.textTertiary.opacity(0.2)
         let strokeColor = region.isEnabled
             ? (isSelected ? SB.Colors.accent : SB.Colors.accent.opacity(0.4))
-            : Color.gray.opacity(0.4)
+            : SB.Colors.textTertiary.opacity(0.4)
 
         return ZStack {
             // Trapezoid shape
@@ -629,7 +632,7 @@ struct TimelineView: View {
             // Zoom label at peak center
             if regionWidth > 30 {
                 Text(String(format: "%.1fx", region.zoomLevel))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(SB.Typo.microMono)
                     .foregroundStyle(region.isEnabled ? SB.Colors.textSecondary : SB.Colors.textTertiary)
                     .offset(y: -2)
             }
@@ -637,15 +640,15 @@ struct TimelineView: View {
             // Edge grab handles (visible on selected regions)
             if isSelected && peakHeight > 8 {
                 HStack {
-                    RoundedRectangle(cornerRadius: 1.5)
+                    RoundedRectangle(cornerRadius: SB.Radius.xxs)
                         .fill(SB.Colors.accent)
                         .frame(width: 3, height: max(8, peakHeight * 0.5))
-                        .shadow(color: SB.Colors.accent.opacity(0.4), radius: 2)
+                        .sbShadow(SB.Shadows.glow(SB.Colors.accent))
                     Spacer()
-                    RoundedRectangle(cornerRadius: 1.5)
+                    RoundedRectangle(cornerRadius: SB.Radius.xxs)
                         .fill(SB.Colors.accent)
                         .frame(width: 3, height: max(8, peakHeight * 0.5))
-                        .shadow(color: SB.Colors.accent.opacity(0.4), radius: 2)
+                        .sbShadow(SB.Shadows.glow(SB.Colors.accent))
                 }
                 .frame(width: regionWidth)
             }
