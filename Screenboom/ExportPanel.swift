@@ -152,7 +152,7 @@ struct ExportPopupView: View {
             }
         }
         .padding(SB.Space.xl)
-        .frame(width: 320)
+        .frame(width: SB.Layout.exportPanelWidth)
         .background(
             RoundedRectangle(cornerRadius: SB.Radius.lg, style: .continuous)
                 .fill(.ultraThickMaterial)

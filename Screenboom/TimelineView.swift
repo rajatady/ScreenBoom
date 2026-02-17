@@ -25,7 +25,7 @@ struct TimelineView: View {
         VStack(spacing: 0) {
             segmentControlsBar
                 .padding(.horizontal, SB.Space.md)
-                .padding(.vertical, SB.Space.xs + 2)
+                .padding(.vertical, SB.Space.xs + 2) // sb-exempt — micro-adjust for native controls
 
             Divider()
 
@@ -151,7 +151,7 @@ struct TimelineView: View {
 
             playbackControls
                 .padding(.horizontal, SB.Space.md)
-                .padding(.vertical, SB.Space.xs + 2)
+                .padding(.vertical, SB.Space.xs + 2) // sb-exempt — micro-adjust for native controls
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -311,7 +311,7 @@ struct TimelineView: View {
                         Text("32x").tag(32.0)
                     }
                     .pickerStyle(.menu)
-                    .frame(width: 80)
+                    .frame(width: SB.Layout.speedPickerWidth)
                 }
 
                 if let splitIdx = splitIndexForSegment(selectedId) {
@@ -391,7 +391,7 @@ struct TimelineView: View {
             ForEach(Array(project.segments.enumerated()), id: \.element.id) { index, seg in
                 let frame = segmentVisualFrame(index: index, totalWidth: width)
                 let isSelected = project.selectedSegmentId == seg.id
-                let cr = min(6.0, frame.width / 3)
+                let cr = min(SB.Radius.sm, frame.width / 3) // sb-exempt — dynamic clamped radius
 
                 ZStack {
                     // Solid color fill (always visible in solid mode, hidden behind thumbnails in frame mode)
@@ -465,10 +465,10 @@ struct TimelineView: View {
 
             ForEach(Array(project.segments.enumerated()), id: \.element.id) { index, _ in
                 let frame = segmentVisualFrame(index: index, totalWidth: width)
-                let cr = min(6.0, frame.width / 3)
+                let cr = min(SB.Radius.sm, frame.width / 3) // sb-exempt — dynamic clamped radius
                 RoundedRectangle(cornerRadius: cr)
-                    .fill(Color.white)
-                    .frame(width: frame.width, height: 80)
+                    .fill(.white) // sb-exempt — SwiftUI mask fill (not displayed)
+                    .frame(width: frame.width, height: SB.Layout.segmentTrackHeight)
                     .offset(x: frame.x)
             }
         }

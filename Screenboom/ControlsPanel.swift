@@ -118,7 +118,7 @@ struct ZoomFocusPicker: View {
                 Circle()
                     .fill(SB.Colors.accent)
                     .frame(width: 8, height: 8)
-                    .shadow(color: SB.Colors.accent.opacity(0.5), radius: 4)
+                    .sbShadow(SB.Shadows.glow(SB.Colors.accent))
                     .position(x: dotX, y: dotY)
 
                 // Crosshair lines

@@ -77,8 +77,8 @@ struct CountdownOverlayView: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(.black.opacity(0.55))
-                .frame(width: 140, height: 140)
+                .fill(SB.Colors.surfaceOverlay)
+                .frame(width: SB.Layout.countdownBackdropSize, height: SB.Layout.countdownBackdropSize)
                 .blur(radius: 25)
 
             Text("\(model.count)")
@@ -87,6 +87,6 @@ struct CountdownOverlayView: View {
                 .contentTransition(.numericText())
                 .animation(SB.Anim.countTick, value: model.count)
         }
-        .frame(width: 200, height: 200)
+        .frame(width: SB.Layout.countdownFrameSize, height: SB.Layout.countdownFrameSize)
     }
 }

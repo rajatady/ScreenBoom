@@ -62,7 +62,7 @@ struct WelcomeView: View {
             VStack(spacing: SB.Space.xl) {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
-                    .frame(width: 120, height: 120)
+                    .frame(width: SB.Layout.appIconSize, height: SB.Layout.appIconSize)
                     .sbShadow(SB.Shadows.popup)
                     .shadow(color: SB.Colors.surfaceOverlay.opacity(0.2), radius: 10, y: 5) // sb-exempt — layered shadow
 
@@ -199,7 +199,7 @@ private struct ProjectCard: View {
             ZStack(alignment: .topTrailing) {
                 thumbnailView
                     .frame(maxWidth: .infinity)
-                    .frame(height: 160)
+                    .frame(height: SB.Layout.cardThumbnailHeight)
                     .clipped()
                     .matchedGeometryEffect(id: "hero-\(info.id)", in: heroNamespace)
 
@@ -227,7 +227,7 @@ private struct ProjectCard: View {
                         .focused($isNameFocused)
                         .onSubmit { onCommitRename() }
                         .onAppear { isNameFocused = true }
-                        .padding(.horizontal, -2)
+                        .padding(.horizontal, -2) // sb-exempt — TextField alignment fix
                 } else {
                     Text(info.name)
                         .font(SB.Typo.bodyMedium)

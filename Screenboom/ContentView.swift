@@ -74,13 +74,13 @@ struct ContentView: View {
                     Divider()
 
                     TimelineView(project: project)
-                        .frame(height: project.hasCursorData ? 240 : 200)
+                        .frame(height: project.hasCursorData ? SB.Layout.timelineHeightWithZoom : SB.Layout.timelineHeight)
                 }
             }
 
             if let settings = editorSettings, !project.isLoadingProject, !project.isClosingProject {
                 ControlsPanel(controller: settings)
-                    .frame(width: 316) // 36pt tab bar + 280pt content
+                    .frame(width: SB.Layout.controlPanelWidth)
             }
         }
     }
@@ -105,7 +105,7 @@ struct ContentView: View {
                 HStack(spacing: SB.Space.sm) {
                     ProgressView(value: project.exportProgress)
                         .tint(SB.Colors.accent)
-                        .frame(width: 60)
+                        .frame(width: SB.Layout.exportProgressWidth)
                     Text("\(Int(project.exportProgress * 100))%")
                         .font(SB.Typo.mono)
                         .foregroundStyle(SB.Colors.textSecondary)

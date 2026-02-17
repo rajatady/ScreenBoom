@@ -36,6 +36,10 @@ struct DesignSystemComplianceTests {
         (#"Color\.gray[^:]"#,             "Raw Color.gray — use SB.Colors.surface or SB.Colors.textTertiary"),
         (#"Color\.accentColor"#,          "Raw Color.accentColor — use SB.Colors.accent"),
         (#"[^a-zA-Z]NSColor\(red:"#,      "Raw NSColor(red:...) — use SB.Colors.accentNS"),
+        (#"\.foregroundStyle\(\.white\)"#,  "Raw .foregroundStyle(.white) — use SB.Colors.textPrimary"),
+        (#"Color\.white\.opacity"#,         "Raw Color.white.opacity — use SB.Glass.*"),
+        (#"Color\.black\.opacity"#,         "Raw Color.black.opacity — use SB.Colors.surfaceOverlay or SB.Shadows"),
+        (#"\.black\.opacity"#,              "Raw .black.opacity — use SB.Colors.surfaceOverlay or SB.Shadows"),
     ]
 
     @Test func featureViewsUseDesignTokens() throws {

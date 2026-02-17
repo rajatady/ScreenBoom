@@ -167,5 +167,13 @@ enum SB {
         static let segmentTrackHeight: CGFloat = 80
         static let zoomTrackHeight: CGFloat = 36
         static let focusPickerHeight: CGFloat = 140
+        static let exportPanelWidth: CGFloat = 320
+        static let countdownBackdropSize: CGFloat = 140
+        static let countdownFrameSize: CGFloat = 200
+        static let appIconSize: CGFloat = 120
+        static let cardThumbnailHeight: CGFloat = 160
+        static let captureModeSelectorWidth: CGFloat = 220
+        static let exportProgressWidth: CGFloat = 60
+        static let speedPickerWidth: CGFloat = 80
     }
 }

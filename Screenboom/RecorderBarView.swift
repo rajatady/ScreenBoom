@@ -73,7 +73,7 @@ struct RecorderBarView: View {
                     flow.captureMode = mode
                 }
             }
-            .frame(width: 220)
+            .frame(width: SB.Layout.captureModeSelectorWidth)
 
             thinDivider
 
@@ -211,7 +211,7 @@ struct RecorderBarView: View {
                     .frame(width: 8, height: 8)
                 Text("Start")
                     .font(SB.Typo.label)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(SB.Colors.textPrimary)
             }
             .padding(.horizontal, SB.Space.lg)
             .padding(.vertical, SB.Space.md)
@@ -269,7 +269,7 @@ struct RecorderBarView: View {
                         .frame(width: 10, height: 10)
                     Text("Stop")
                         .font(SB.Typo.label)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(SB.Colors.textPrimary)
                 }
                 .padding(.horizontal, SB.Space.lg)
                 .padding(.vertical, SB.Space.md)

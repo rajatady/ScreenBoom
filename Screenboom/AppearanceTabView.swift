@@ -108,8 +108,8 @@ struct AppearanceTabView: View {
                         Text(preset.name)
                             .font(SB.Typo.captionMedium)
                             .foregroundStyle(isActive ? SB.Colors.textPrimary : SB.Colors.textSecondary)
-                            .padding(.horizontal, SB.Space.sm + SB.Space.xxs)
-                            .padding(.vertical, SB.Space.xs + 1)
+                            .padding(.horizontal, SB.Space.sm + SB.Space.xxs) // sb-exempt — preset chip sizing
+                            .padding(.vertical, SB.Space.xs + 1) // sb-exempt — preset chip sizing
                             .background(
                                 Capsule()
                                     .fill(isActive ? SB.Colors.accentSubtle : SB.Glass.subtle)
@@ -171,7 +171,7 @@ struct AppearanceTabView: View {
                     .clipShape(RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
-                            .strokeBorder(isSelected ? SB.Colors.accent : Color.white.opacity(0.08), lineWidth: isSelected ? 2 : 0.5)
+                            .strokeBorder(isSelected ? SB.Colors.accent : SB.Glass.base, lineWidth: isSelected ? 2 : 0.5)
                     )
                 Text(name)
                     .font(SB.Typo.mono)

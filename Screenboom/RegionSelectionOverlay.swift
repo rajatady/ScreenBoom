@@ -186,12 +186,12 @@ final class RegionSelectionView: NSView {
     // Visual constants
     private let handleSize: CGFloat = 10
     private let edgeBand: CGFloat = 16
-    private let overlayColor = NSColor.black.withAlphaComponent(0.4)
+    private let overlayColor = NSColor.black.withAlphaComponent(0.4) // sb-exempt — CGContext drawing
     private let accentColor = SB.Colors.accentNS
     private let accentFillColor = SB.Colors.accentNS.withAlphaComponent(0.05)
     private let dimensionFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
     private let hintFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-    private let labelBgColor = NSColor.black.withAlphaComponent(0.75)
+    private let labelBgColor = NSColor.black.withAlphaComponent(0.75) // sb-exempt — CGContext drawing
 
     init(frame: NSRect, screenSize: CGSize, initialSize: CGSize, onSelected: @escaping (CGRect) -> Void, onCancelled: @escaping () -> Void) {
         let w = min(initialSize.width, screenSize.width - 40)
