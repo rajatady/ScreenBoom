@@ -5,83 +5,60 @@ struct ControlsPanel: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: SB.Space.xl) {
                 backgroundSection
                 layoutSection
                 shadowSection
                 outputSection
                 exportSection
             }
-            .padding()
+            .padding(SB.Space.lg)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .sbGlassPanel()
     }
 
     // MARK: - Background
 
     var backgroundSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Background")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: SB.Space.md) {
+            SBSectionLabel(text: "Background")
 
-            HStack {
-                ColorPicker("Color 1", selection: $project.gradientColor1)
+            HStack(spacing: SB.Space.md) {
+                ColorPicker("", selection: $project.gradientColor1)
+                    .labelsHidden()
                     .onChange(of: project.gradientColor1) { _, _ in project.updateVisuals() }
-            }
-            HStack {
-                ColorPicker("Color 2", selection: $project.gradientColor2)
+                ColorPicker("", selection: $project.gradientColor2)
+                    .labelsHidden()
                     .onChange(of: project.gradientColor2) { _, _ in project.updateVisuals() }
             }
 
-            HStack {
-                Button("Dark") {
-                    project.gradientColor1 = Color(red: 0.08, green: 0.08, blue: 0.12)
-                    project.gradientColor2 = Color(red: 0.18, green: 0.12, blue: 0.28)
-                    project.updateVisuals()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("Light") {
-                    project.gradientColor1 = Color(red: 0.92, green: 0.92, blue: 0.96)
-                    project.gradientColor2 = Color(red: 0.85, green: 0.88, blue: 0.95)
-                    project.updateVisuals()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("Blue") {
-                    project.gradientColor1 = Color(red: 0.05, green: 0.1, blue: 0.3)
-                    project.gradientColor2 = Color(red: 0.1, green: 0.2, blue: 0.5)
-                    project.updateVisuals()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+            HStack(spacing: SB.Space.sm) {
+                presetButton("Dark", c1: Color(red: 0.08, green: 0.08, blue: 0.12), c2: Color(red: 0.18, green: 0.12, blue: 0.28))
+                presetButton("Light", c1: Color(red: 0.92, green: 0.92, blue: 0.96), c2: Color(red: 0.85, green: 0.88, blue: 0.95))
+                presetButton("Ocean", c1: Color(red: 0.05, green: 0.1, blue: 0.3), c2: Color(red: 0.1, green: 0.2, blue: 0.5))
             }
+        }
+    }
+
+    private func presetButton(_ name: String, c1: Color, c2: Color) -> some View {
+        SBSecondaryButton(title: name, icon: "paintpalette", compact: true) {
+            project.gradientColor1 = c1
+            project.gradientColor2 = c2
+            project.updateVisuals()
         }
     }
 
     // MARK: - Layout
 
     var layoutSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Layout")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: SB.Space.md) {
+            SBSectionLabel(text: "Layout")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Padding: \(Int(project.padding))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $project.padding, in: 0...200, step: 5)
-                    .onChange(of: project.padding) { _, _ in project.updateVisuals() }
+            sliderRow(label: "Padding", value: $project.padding, range: 0...200, step: 5) {
+                project.updateVisuals()
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Corner Radius: \(Int(project.cornerRadius))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $project.cornerRadius, in: 0...60, step: 1)
-                    .onChange(of: project.cornerRadius) { _, _ in project.updateVisuals() }
+            sliderRow(label: "Corner Radius", value: $project.cornerRadius, range: 0...60, step: 1) {
+                project.updateVisuals()
             }
         }
     }
@@ -89,24 +66,14 @@ struct ControlsPanel: View {
     // MARK: - Shadow
 
     var shadowSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Shadow")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: SB.Space.md) {
+            SBSectionLabel(text: "Shadow")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Radius: \(Int(project.shadowRadius))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $project.shadowRadius, in: 0...80, step: 1)
-                    .onChange(of: project.shadowRadius) { _, _ in project.updateVisuals() }
+            sliderRow(label: "Radius", value: $project.shadowRadius, range: 0...80, step: 1) {
+                project.updateVisuals()
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Opacity: \(Int(project.shadowOpacity * 100))%")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $project.shadowOpacity, in: 0...1, step: 0.05)
-                    .onChange(of: project.shadowOpacity) { _, _ in project.updateVisuals() }
+            sliderRow(label: "Opacity", value: $project.shadowOpacity, range: 0...1, step: 0.05, format: "%d%%", multiplier: 100) {
+                project.updateVisuals()
             }
         }
     }
@@ -114,11 +81,10 @@ struct ControlsPanel: View {
     // MARK: - Output
 
     var outputSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Output")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: SB.Space.md) {
+            SBSectionLabel(text: "Output")
 
-            Picker("Resolution", selection: Binding(
+            Picker("", selection: Binding(
                 get: { "\(Int(project.outputWidth))x\(Int(project.outputHeight))" },
                 set: { val in
                     let parts = val.split(separator: "x")
@@ -129,11 +95,12 @@ struct ControlsPanel: View {
                     }
                 }
             )) {
-                Text("1920x1080").tag("1920x1080")
-                Text("2560x1440").tag("2560x1440")
-                Text("3840x2160").tag("3840x2160")
-                Text("1280x720").tag("1280x720")
+                Text("1920 \u{00D7} 1080").tag("1920x1080")
+                Text("2560 \u{00D7} 1440").tag("2560x1440")
+                Text("3840 \u{00D7} 2160").tag("3840x2160")
+                Text("1280 \u{00D7} 720").tag("1280x720")
             }
+            .labelsHidden()
             .pickerStyle(.menu)
         }
     }
@@ -141,23 +108,50 @@ struct ControlsPanel: View {
     // MARK: - Export
 
     var exportSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Export")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: SB.Space.md) {
+            SBSectionLabel(text: "Export")
 
             if project.isExporting {
-                ProgressView(value: project.exportProgress) {
-                    Text("Exporting... \(Int(project.exportProgress * 100))%")
-                        .font(.caption)
+                VStack(spacing: SB.Space.sm) {
+                    ProgressView(value: project.exportProgress)
+                        .tint(SB.Colors.accent)
+                    Text("Exporting \(Int(project.exportProgress * 100))%")
+                        .font(SB.Typo.caption)
+                        .foregroundStyle(SB.Colors.textSecondary)
                 }
             } else {
-                Button("Export MP4") {
+                SBPrimaryButton(title: "Export MP4", icon: "square.and.arrow.up", width: .infinity) {
                     project.startExport()
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
                 .disabled(project.segments.filter(\.isEnabled).isEmpty)
             }
+        }
+    }
+
+    // MARK: - Slider Helper
+
+    private func sliderRow(
+        label: String,
+        value: Binding<CGFloat>,
+        range: ClosedRange<CGFloat>,
+        step: CGFloat,
+        format: String = "%d",
+        multiplier: CGFloat = 1,
+        onChange: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: SB.Space.xs) {
+            HStack {
+                Text(label)
+                    .font(SB.Typo.caption)
+                    .foregroundStyle(SB.Colors.textSecondary)
+                Spacer()
+                Text(String(format: format, Int(value.wrappedValue * multiplier)))
+                    .font(SB.Typo.mono)
+                    .foregroundStyle(SB.Colors.textTertiary)
+            }
+            Slider(value: value, in: range, step: step)
+                .tint(SB.Colors.accent)
+                .onChange(of: value.wrappedValue) { _, _ in onChange() }
         }
     }
 }

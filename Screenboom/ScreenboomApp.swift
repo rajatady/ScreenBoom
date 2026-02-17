@@ -3,11 +3,23 @@ import SwiftUI
 @main
 struct ScreenboomApp: App {
     @State private var project = Project()
+    @State private var projectStore = ProjectStore()
 
     var body: some Scene {
         WindowGroup {
-            ContentView(project: project)
+            ContentView(project: project, store: projectStore)
                 .frame(minWidth: 1100, minHeight: 700)
+                .onAppear {
+                    projectStore.migrateIfNeeded()
+                    let store = projectStore
+                    project.onVideoLoaded = { id, size, duration in
+                        store.update(id) { info in
+                            info.videoWidth = Int(size.width)
+                            info.videoHeight = Int(size.height)
+                            info.videoDurationSeconds = duration
+                        }
+                    }
+                }
         }
         .defaultSize(width: 1400, height: 900)
         .commands {
@@ -20,5 +32,12 @@ struct ScreenboomApp: App {
                     .disabled(!project.canRedo)
             }
         }
+
+        Window("Screen Recorder", id: "recorder") {
+            RecorderWindow { session in
+                project.createProject(session: session, store: projectStore)
+            }
+        }
+        .windowResizability(.contentSize)
     }
 }

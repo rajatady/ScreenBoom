@@ -1,11 +1,15 @@
 import Foundation
 import AVFoundation
 import SwiftUI
+import os
+
+private let logger = Logger(subsystem: "com.trymagically.Screenboom", category: "Project")
 
 // MARK: - Persisted State
 
 struct SavedState: Codable {
     var sourceURLBookmark: Data?
+    var sourceURLPath: String?
     var splitPoints: [Double]
     var segmentStates: [SavedSegment]
     var gradientColor1: [Double] // [r, g, b]
@@ -26,24 +30,25 @@ struct SavedState: Codable {
         var isEnabled: Bool
     }
 
-    static let fileURL: URL = {
+    static let legacyFileURL: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Screenboom", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("project-state.json")
     }()
 
-    func write() {
+    func write(to url: URL) {
         do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(self)
-            try data.write(to: Self.fileURL, options: .atomic)
+            try data.write(to: url, options: .atomic)
         } catch {
             print("Failed to save state: \(error)")
         }
     }
 
-    static func load() -> SavedState? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+    static func load(from url: URL) -> SavedState? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(SavedState.self, from: data)
     }
 }
@@ -83,6 +88,13 @@ final class Project {
     var thumbnails: [CGImage] = []
 
     var showThumbnails: Bool = true
+
+    var cursorMetadataURL: URL?
+    var recordingSession: RecordingSession?
+
+    var currentProjectID: UUID?
+    var store: ProjectStore?
+    var onVideoLoaded: ((UUID, CGSize, Double) -> Void)?
 
     var isExporting: Bool = false
     var exportProgress: Double = 0
@@ -220,9 +232,7 @@ final class Project {
         segments.filter(\.isEnabled).reduce(0) { $0 + $1.outputDuration }
     }
 
-    init() {
-        restoreState()
-    }
+    init() {}
 
     // MARK: - Persistence
 
@@ -238,11 +248,28 @@ final class Project {
     private func writeStateNow() {
         var bookmark: Data?
         if let url = sourceURL {
-            bookmark = try? url.bookmarkData(
-                options: [.withSecurityScope],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
+            // Try security-scoped first (user-selected files), fall back to regular (app-owned recordings)
+            do {
+                bookmark = try url.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+            } catch {
+                logger.warning("writeStateNow: security-scoped bookmark failed: \(error.localizedDescription)")
+            }
+            if bookmark == nil {
+                do {
+                    bookmark = try url.bookmarkData(
+                        options: [],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                } catch {
+                    logger.warning("writeStateNow: regular bookmark also failed: \(error.localizedDescription)")
+                }
+            }
+            logger.warning("writeStateNow: bookmark=\(bookmark != nil), path=\(url.path)")
         }
 
         let nsColor1 = NSColor(gradientColor1).usingColorSpace(.sRGB) ?? NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
@@ -250,6 +277,7 @@ final class Project {
 
         let state = SavedState(
             sourceURLBookmark: bookmark,
+            sourceURLPath: sourceURL?.path,
             splitPoints: splitPoints,
             segmentStates: segments.map {
                 SavedState.SavedSegment(startTime: $0.startTime, endTime: $0.endTime, speed: $0.speed, isEnabled: $0.isEnabled)
@@ -265,13 +293,25 @@ final class Project {
             playheadTime: playheadTime,
             showThumbnails: showThumbnails
         )
-        state.write()
+        guard let projectID = currentProjectID, let store else { return }
+        state.write(to: store.stateFileURL(for: projectID))
     }
 
-    private func restoreState() {
-        guard let state = SavedState.load() else { return }
+    // MARK: - Multi-Project
 
-        // Restore visual settings immediately
+    func loadProject(info: ProjectInfo, store: ProjectStore) {
+        self.store = store
+        self.currentProjectID = info.id
+
+        let stateURL = store.stateFileURL(for: info.id)
+        logger.warning("loadProject: attempting to load state from \(stateURL.path)")
+        guard let state = SavedState.load(from: stateURL) else {
+            logger.error("loadProject: FAILED — state file missing or undecodable at \(stateURL.path)")
+            return
+        }
+        logger.warning("loadProject: state loaded, bookmark exists: \(state.sourceURLBookmark != nil)")
+
+        // Restore visual settings
         gradientColor1 = Color(red: state.gradientColor1[safe: 0] ?? 0.08,
                                green: state.gradientColor1[safe: 1] ?? 0.08,
                                blue: state.gradientColor1[safe: 2] ?? 0.12)
@@ -286,11 +326,32 @@ final class Project {
         outputHeight = CGFloat(state.outputHeight)
         showThumbnails = state.showThumbnails ?? true
 
-        // Restore video via bookmark
-        guard let bookmark = state.sourceURLBookmark else { return }
-        var isStale = false
-        guard let url = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale) else { return }
-        _ = url.startAccessingSecurityScopedResource()
+        // Restore video: try bookmark first, fall back to stored path
+        var url: URL?
+        if let bookmark = state.sourceURLBookmark {
+            var isStale = false
+            if let resolved = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale) {
+                _ = resolved.startAccessingSecurityScopedResource()
+                url = resolved
+                logger.warning("loadProject: resolved via security-scoped bookmark → \(resolved.path)")
+            } else if let resolved = try? URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale) {
+                url = resolved
+                logger.warning("loadProject: resolved via regular bookmark → \(resolved.path)")
+            }
+        }
+        // Fallback: use stored file path directly
+        if url == nil, let path = state.sourceURLPath {
+            let fileURL = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: path) {
+                url = fileURL
+                logger.warning("loadProject: resolved via stored path fallback → \(path)")
+            }
+        }
+        guard let url else {
+            logger.error("loadProject: FAILED — no bookmark and no valid path")
+            currentProjectID = nil
+            return
+        }
 
         let loadedAsset = AVAsset(url: url)
         self.sourceURL = url
@@ -306,13 +367,11 @@ final class Project {
                 self.videoSize = size
                 self.duration = dur
 
-                // Restore splits and segments from saved state
                 self.splitPoints = state.splitPoints
                 self.segments = state.segmentStates.map {
                     Segment(startTime: $0.startTime, endTime: $0.endTime, speed: $0.speed, isEnabled: $0.isEnabled)
                 }
 
-                // If no segments were saved, create default
                 if self.segments.isEmpty {
                     self.segments = [Segment(startTime: 0, endTime: dur.seconds, speed: 1.0, isEnabled: true)]
                 }
@@ -320,17 +379,111 @@ final class Project {
                 self.rebuildPlayer()
                 self.generateThumbnails()
 
-                // Restore playhead
                 if state.playheadTime > 0 {
                     self.playheadTime = state.playheadTime
                     self.currentTime = state.playheadTime
                     let target = CMTime(seconds: state.playheadTime, preferredTimescale: 600)
                     await self.player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
                 }
+
+                self.onVideoLoaded?(info.id, size, dur.seconds)
             } catch {
                 print("Failed to restore video: \(error)")
             }
         }
+
+        store.touchLastOpened(info.id)
+    }
+
+    func createProject(url: URL, store: ProjectStore) {
+        self.store = store
+        let projectID = UUID()
+        self.currentProjectID = projectID
+
+        let info = ProjectInfo(
+            id: projectID,
+            name: url.deletingPathExtension().lastPathComponent,
+            sourceFileName: url.lastPathComponent
+        )
+        store.add(info)
+        loadVideo(url: url)
+    }
+
+    func createProject(session: RecordingSession, store: ProjectStore) {
+        self.store = store
+        let projectID = UUID()
+        self.currentProjectID = projectID
+
+        let info = ProjectInfo(
+            id: projectID,
+            name: session.displayName
+        )
+        store.add(info)
+        loadRecording(session: session)
+    }
+
+    // MARK: - Close Project
+
+    func closeProject() {
+        // Save state before clearing
+        writeStateNow()
+
+        // Generate thumbnail (capture refs before clearing)
+        if let projectID = currentProjectID, let store, let capturedAsset = asset {
+            let dur = duration
+            let thumbnailURL = store.thumbnailURL(for: projectID)
+            Task.detached {
+                let time = CMTime(seconds: dur.seconds * 0.33, preferredTimescale: 600)
+                let generator = AVAssetImageGenerator(asset: capturedAsset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 600, height: 400)
+
+                guard let result = try? await generator.image(at: time) else { return }
+                let nsImage = NSImage(cgImage: result.image, size: NSSize(width: result.image.width, height: result.image.height))
+                guard let tiffData = nsImage.tiffRepresentation,
+                      let bitmap = NSBitmapImageRep(data: tiffData),
+                      let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else { return }
+
+                try? FileManager.default.createDirectory(at: thumbnailURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? jpegData.write(to: thumbnailURL, options: .atomic)
+            }
+        }
+
+        // Tear down observers and player
+        if let token = timeObserver, let player {
+            player.removeTimeObserver(token)
+            timeObserver = nil
+        }
+        if let token = boundaryObserver, let player {
+            player.removeTimeObserver(token)
+            boundaryObserver = nil
+        }
+        cancelSpeedRamp()
+
+        player?.pause()
+        player = nil
+        playerItem = nil
+
+        if let url = sourceURL {
+            url.stopAccessingSecurityScopedResource()
+        }
+
+        sourceURL = nil
+        asset = nil
+        videoSize = .zero
+        duration = .zero
+        splitPoints = []
+        segments = []
+        selectedSegmentId = nil
+        currentTime = 0
+        playheadTime = 0
+        isPlaying = false
+        thumbnails = []
+        cursorMetadataURL = nil
+        recordingSession = nil
+        undoStack = []
+        redoStack = []
+        currentProjectID = nil
     }
 
     // MARK: - Load Video
@@ -357,8 +510,58 @@ final class Project {
                 self.rebuildPlayer()
                 self.generateThumbnails()
                 self.saveState()
+
+                if let projectID = self.currentProjectID {
+                    self.onVideoLoaded?(projectID, size, dur.seconds)
+                }
             } catch {
                 print("Failed to load video: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Load Recording
+
+    func loadRecording(session: RecordingSession) {
+        // Copy recording from temp to project directory so it persists
+        var videoURL = session.videoURL
+        if let projectID = currentProjectID, let store {
+            let projectDir = store.projectDirectory(for: projectID)
+            let destURL = projectDir.appendingPathComponent("recording.mp4")
+            try? FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+            if (try? FileManager.default.copyItem(at: session.videoURL, to: destURL)) != nil {
+                videoURL = destURL
+            }
+        }
+
+        let loadedAsset = AVAsset(url: videoURL)
+        self.sourceURL = videoURL
+        self.asset = loadedAsset
+        self.cursorMetadataURL = session.cursorMetadataURL
+        self.recordingSession = session
+
+        Task {
+            do {
+                let tracks = try await loadedAsset.loadTracks(withMediaType: .video)
+                guard let videoTrack = tracks.first else { return }
+                let size = try await videoTrack.load(.naturalSize)
+                let dur = try await loadedAsset.load(.duration)
+
+                self.videoSize = size
+                self.duration = dur
+                self.splitPoints = []
+                self.segments = [
+                    Segment(startTime: 0, endTime: dur.seconds, speed: 1.0, isEnabled: true)
+                ]
+                self.rebuildPlayer()
+                self.generateThumbnails()
+                self.saveState()
+
+                if let projectID = self.currentProjectID {
+                    self.onVideoLoaded?(projectID, size, dur.seconds)
+                }
+            } catch {
+                print("Failed to load recording: \(error)")
             }
         }
     }

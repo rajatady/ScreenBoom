@@ -8,9 +8,11 @@
 
 <p align="center">Make your screen recordings look professional — gradient backgrounds, padding, rounded corners, drop shadow, timeline editing, smooth speed ramping — all from a lightweight native macOS app. No subscriptions, no watermarks, no Electron.</p>
 
-Record your screen with QuickTime or Cmd+Shift+5, import the MP4 into Screenboom, polish it, and export. That's it.
+Record your screen with the built-in recorder or QuickTime, import the MP4 into Screenboom, polish it, and export. That's it.
 
-Built with Swift 6.2, SwiftUI, and AVFoundation. ~700 lines of rendering pipeline. Ships as a single native binary.
+Built with Swift 6.2, SwiftUI, and AVFoundation. Ships as a single native binary.
+
+> **[Download the latest release](https://github.com/rajatady/ScreenBoom/releases/latest)** — grab the `.dmg` from the Releases page.
 
 ## Why Screenboom?
 
@@ -33,11 +35,18 @@ Screenboom is a native macOS app. No web views, no bundled Chromium, no 300MB do
 - Smooth speed ramping — gradual transitions between segments with different speeds (smoothstep easing, both in preview and export)
 - Hover preview — scrub the timeline by hovering without committing the playhead
 
-**Editor**
+**Screen Recorder**
+- Built-in ScreenCaptureKit recorder — record any display or window
+- 30/60 fps capture
+- Cursor metadata tracking for future cursor intelligence
+
+**Multi-Project Editor**
+- Manage multiple projects from a welcome screen
 - Drag-and-drop or file picker import
 - Real-time preview with all effects applied
+- Inline rename and delete with hover-reveal actions
 - Undo/Redo (Cmd+Z / Cmd+Shift+Z)
-- State persistence — your project survives app restarts
+- State persistence — projects survive app restarts
 - Thumbnail and solid-color timeline view modes
 - Multiple output resolutions (720p, 1080p, 1440p, 4K)
 
@@ -66,33 +75,36 @@ Or open `Screenboom.xcodeproj` in Xcode and hit Cmd+R.
 
 ### Usage
 
-1. Record your screen with QuickTime or Cmd+Shift+5
-2. Open Screenboom and drag in the MP4 (or use File > Open)
-3. Adjust background, padding, corners, and shadow in the right panel
-4. Split and edit segments on the timeline
-5. Hit Export
+1. Open Screenboom and either **record your screen** or **import an MP4**
+2. Adjust background, padding, corners, and shadow in the right panel
+3. Split and edit segments on the timeline
+4. Hit Export
 
 ## Architecture
 
-8 Swift files, no external dependencies.
+No external dependencies. Pure Swift + Apple frameworks.
 
 | File | Purpose |
 |------|---------|
-| `Project.swift` | Core model — all state, playback, segments, persistence, undo/redo, export |
+| `Project.swift` | Core model — all state, multi-project, playback, segments, persistence, undo/redo |
+| `ProjectStore.swift` | Multi-project catalog manager — CRUD, migration, persistence |
+| `DesignSystem.swift` | Design tokens and reusable UI components |
+| `WelcomeView.swift` | Welcome screen — empty state, project grid, hover-reveal actions |
+| `ScreenRecorder.swift` | ScreenCaptureKit recorder — display/window capture, AVAssetWriter pipeline |
 | `TimelineView.swift` | Timeline UI — thumbnails, segment clips, hover preview, playhead, zoom |
 | `FrameRenderer.swift` | CIFilter per-frame render pipeline — gradient, padding, rounded corners, shadow |
 | `CompositionEngine.swift` | AVMutableComposition builder with speed ramp expansion for export |
 | `ControlsPanel.swift` | Right sidebar — all visual settings and export button |
-| `ContentView.swift` | Import screen (drag-and-drop) and editor layout (HSplitView) |
+| `ContentView.swift` | Welcome ↔ editor toggle with animated transitions |
 | `VideoPreviewView.swift` | NSViewRepresentable wrapping AVPlayerView |
-| `ScreenboomApp.swift` | App entry point with undo/redo commands |
 
 **How rendering works:** Each frame goes through a CIFilter pipeline — source video is scaled and positioned into a padded recording rect, rounded corners are applied via a grayscale luminance mask (`CIBlendWithMask`), then composited over a pre-computed shadow and diagonal gradient background. The same pipeline drives both the real-time preview and the export.
 
 ## Roadmap
 
-- [ ] Built-in screen recorder (ScreenCaptureKit) — no more QuickTime dependency
-- [ ] Cursor tracking — separate cursor metadata for smooth cursor rendering
+- [x] Built-in screen recorder (ScreenCaptureKit)
+- [x] Multi-project support with welcome screen
+- [ ] Cursor intelligence — smooth cursor rendering from metadata
 - [ ] Auto-zoom — click detection, dwell tracking, smooth camera follow
 - [ ] Cursor effects — click indicators, cursor scaling, trail effects
 - [ ] Audio support — system audio and microphone
