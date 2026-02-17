@@ -1273,8 +1273,6 @@ final class Project {
             return
         }
 
-        try? FileManager.default.removeItem(at: url)
-
         let composition = CompositionEngine.buildComposition(asset: asset, segments: enabledSegments)
 
         // Build cursor state remapped to composition timeline for export
@@ -1291,33 +1289,24 @@ final class Project {
             cursorOverlayState: exportCursorState
         )
 
-        guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
-            print("Export failed: could not create export session")
-            isExporting = false
-            return
-        }
+        let outputSize = renderSettings.outputSize
 
-        session.outputURL = url
-        session.outputFileType = .mp4
-        session.videoComposition = videoComp
-
-        // Poll progress
-        let progressTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(200))
-                self.exportProgress = Double(session.progress)
+        do {
+            try await CompositionEngine.export(
+                composition: composition,
+                videoComposition: videoComp,
+                outputSize: outputSize,
+                to: url
+            ) { [weak self] progress in
+                Task { @MainActor in
+                    self?.exportProgress = progress
+                }
             }
-        }
-
-        await session.export()
-        progressTask.cancel()
-
-        if session.status == .completed {
             isExporting = false
             exportProgress = 1.0
             NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
-        } else {
-            print("Export failed: \(session.error?.localizedDescription ?? "unknown")")
+        } catch {
+            print("Export failed: \(error.localizedDescription)")
             isExporting = false
         }
     }

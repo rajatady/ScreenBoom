@@ -135,14 +135,11 @@ enum FrameRenderer {
 
         videoComposition.renderSize = outputSize
 
-        // Match source frame rate to avoid jitter from frame dropping
-        let sourceRate: Float
-        if let track = asset.tracks(withMediaType: .video).first {
-            sourceRate = track.nominalFrameRate > 0 ? track.nominalFrameRate : 30
-        } else {
-            sourceRate = 30
-        }
-        videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(sourceRate))
+        // Use 60fps output — standard for screen recordings.
+        // Do NOT use track.nominalFrameRate here: on a composition with scaleTimeRange,
+        // it returns the effective rate (e.g. 129fps for 6x/8x speed), which causes
+        // QuickTime Player to misinterpret playback duration.
+        videoComposition.frameDuration = CMTime(value: 1, timescale: 60)
 
         return videoComposition
     }

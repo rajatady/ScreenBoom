@@ -184,16 +184,18 @@ enum CompositionEngine {
         }
         reader.add(readerOutput)
 
-        // Writer — HEVC for sharp screen content, bitrate scaled by resolution
+        // Writer — H.264 for maximum compatibility (HEVC causes QuickTime Player
+        // duration bugs on macOS). Bitrate scaled by resolution.
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
         let pixelCount = Int(outputSize.width * outputSize.height)
         let bitrate = min(80_000_000, max(20_000_000, pixelCount * 15))
         let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(outputSize.width),
             AVVideoHeightKey: Int(outputSize.height),
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: bitrate,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                 AVVideoMaxKeyFrameIntervalKey: 30
             ] as [String: Any]
         ]
@@ -212,17 +214,26 @@ enum CompositionEngine {
         writer.startSession(atSourceTime: .zero)
 
         let totalDuration = composition.duration.seconds
+        let minFrameInterval = 1.0 / 60.0
+        var lastWrittenPTS: Double = -1
 
-        // Process frames
+        // Process frames — throttle to 60fps output.
+        // Speed-scaled compositions produce >60fps (e.g. 6x speed = 360fps effective).
+        // Writing all frames causes QuickTime Player duration bugs with both H.264 and HEVC.
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             writerInput.requestMediaDataWhenReady(on: DispatchQueue(label: "com.screenboom.export")) {
                 while writerInput.isReadyForMoreMediaData {
                     if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
                         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
-                        if totalDuration > 0 {
-                            progress(min(1.0, pts / totalDuration))
+
+                        // Write first frame always, then only if enough time has passed
+                        if lastWrittenPTS < 0 || (pts - lastWrittenPTS) >= minFrameInterval * 0.9 {
+                            if totalDuration > 0 {
+                                progress(min(1.0, pts / totalDuration))
+                            }
+                            writerInput.append(sampleBuffer)
+                            lastWrittenPTS = pts
                         }
-                        writerInput.append(sampleBuffer)
                     } else {
                         writerInput.markAsFinished()
 
