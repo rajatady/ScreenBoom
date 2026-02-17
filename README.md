@@ -23,7 +23,8 @@ Screenboom is a native macOS app. No web views, no bundled Chromium, no 300MB do
 ## Features
 
 **Visual Effects**
-- Gradient background — two-color diagonal gradient with presets (Dark, Light, Blue) or custom colors
+- Background styles — solid color, two-color gradient, mesh gradient (4-corner blend), 10 wallpaper presets, or custom image
+- Frame styles — border, gradient border, neon glow, browser chrome, macOS window bar
 - Padding — adjustable spacing around the recording (0–200px)
 - Rounded corners — smooth corner radius (0–60px)
 - Drop shadow — configurable blur radius and opacity
@@ -41,6 +42,7 @@ Screenboom is a native macOS app. No web views, no bundled Chromium, no 300MB do
 - Click ripple effects with customizable color and radius
 - Auto-zoom — detects click and keyboard activity clusters, zooms into areas of focus
 - Editable zoom regions on the timeline — resize, move, adjust zoom level and focus point
+- Cursor interpolation across cuts — smooth bridging at disabled segment boundaries
 
 **Screen Recorder**
 - Built-in ScreenCaptureKit recorder — record any display or window
@@ -58,10 +60,11 @@ Screenboom is a native macOS app. No web views, no bundled Chromium, no 300MB do
 - Multiple output resolutions (720p, 1080p, 1440p, 4K)
 
 **Export**
-- HEVC export with resolution-scaled bitrate (20–80 Mbps)
+- H.264 export with resolution-scaled bitrate (20–80 Mbps), 60fps throttle
 - Lanczos downscaling for sharp text and UI in screen content
 - Source frame rate preserved (no dropped frames)
 - Speed changes with smooth ramps at boundaries
+- All visual effects (backgrounds, frames, cursor, zoom) applied in export
 
 ## Getting Started
 
@@ -100,13 +103,14 @@ No external dependencies. Pure Swift + Apple frameworks.
 | `WelcomeView.swift` | Welcome screen — empty state, project grid, hover-reveal actions |
 | `ScreenRecorder.swift` | ScreenCaptureKit recorder — display/window capture, AVAssetWriter pipeline |
 | `TimelineView.swift` | Timeline UI — thumbnails, segment clips, hover preview, playhead, zoom |
-| `FrameRenderer.swift` | CIFilter per-frame render pipeline — gradient, padding, rounded corners, shadow |
+| `BackgroundModels.swift` | Background types, frame styles, wallpaper presets, CodableColor |
+| `FrameRenderer.swift` | CIFilter per-frame render pipeline — backgrounds, frames, corners, shadow, cursor |
 | `CompositionEngine.swift` | AVMutableComposition builder with speed ramp expansion for export |
-| `ControlsPanel.swift` | Right sidebar — all visual settings and export button |
+| `ControlsPanel.swift` | Tabbed editor panel — appearance, cursor, zoom tabs |
 | `ContentView.swift` | Welcome ↔ editor toggle with animated transitions |
 | `VideoPreviewView.swift` | NSViewRepresentable wrapping AVPlayerView |
 
-**How rendering works:** Each frame goes through a CIFilter pipeline — source video is scaled and positioned into a padded recording rect, rounded corners are applied via a grayscale luminance mask (`CIBlendWithMask`), then composited over a pre-computed shadow and diagonal gradient background. The same pipeline drives both the real-time preview and the export.
+**How rendering works:** Each frame goes through a CIFilter pipeline — source video is scaled and positioned into a padded recording rect, rounded corners applied via luminance mask (`CIBlendWithMask`), cursor and click effects composited, frame overlay added, then composited over shadow and background. Backgrounds and frames are pre-computed once per settings change (cached for mesh/wallpaper). The same pipeline drives both real-time preview (always 4K) and export.
 
 ## Roadmap
 
@@ -115,9 +119,11 @@ No external dependencies. Pure Swift + Apple frameworks.
 - [x] Cursor intelligence — smooth cursor rendering from metadata
 - [x] Auto-zoom — click and keyboard detection, editable zoom regions on timeline
 - [x] Cursor effects — click ripple indicators, multiple cursor styles
+- [x] Background variety — solid, gradient, mesh, wallpapers, custom images
+- [x] Frame styles — border, glow, browser chrome, macOS window
+- [x] Cursor interpolation across cuts — smooth bridging at segment boundaries
 - [ ] Audio support — system audio and microphone
 - [ ] Webcam overlay — picture-in-picture with customizable shape and position
-- [ ] Background options — wallpapers, images, solid colors (not just gradients)
 - [ ] Annotations — text, arrows, highlights
 - [ ] Keyboard shortcut overlay — show key presses on screen
 - [ ] Export presets — optimized for Twitter, YouTube, Slack, etc.
@@ -128,7 +134,7 @@ No external dependencies. Pure Swift + Apple frameworks.
 - **SwiftUI** for all UI, AppKit interop only for AVPlayerView
 - **AVFoundation** — raw AVAsset for preview, AVMutableComposition for export
 - **CoreImage** — per-frame CIFilter pipeline for all visual effects
-- **AVAssetExportSession** — export with CIFilter video composition
+- **AVAssetReader+Writer** — export with CIFilter video composition (respects speed-ramped compositions)
 - **JSON persistence** — project state saved to `~/Library/Application Support/Screenboom/`
 
 ## Why This Exists
