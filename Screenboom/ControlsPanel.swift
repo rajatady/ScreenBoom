@@ -32,20 +32,47 @@ struct ControlsPanel: View {
                     .onChange(of: project.gradientColor2) { _, _ in project.updateVisuals() }
             }
 
-            HStack(spacing: SB.Space.sm) {
-                presetButton("Dark", c1: Color(red: 0.08, green: 0.08, blue: 0.12), c2: Color(red: 0.18, green: 0.12, blue: 0.28))
-                presetButton("Light", c1: Color(red: 0.92, green: 0.92, blue: 0.96), c2: Color(red: 0.85, green: 0.88, blue: 0.95))
-                presetButton("Ocean", c1: Color(red: 0.05, green: 0.1, blue: 0.3), c2: Color(red: 0.1, green: 0.2, blue: 0.5))
-            }
+            SBGlassTabs(
+                items: ["Dark", "Light", "Ocean"],
+                selection: currentPreset,
+                onSelect: { applyPreset($0) }
+            )
         }
     }
 
-    private func presetButton(_ name: String, c1: Color, c2: Color) -> some View {
-        SBSecondaryButton(title: name, icon: "paintpalette", compact: true) {
-            project.gradientColor1 = c1
-            project.gradientColor2 = c2
-            project.updateVisuals()
+    private var currentPreset: String? {
+        let presets = backgroundPresets
+        for (name, c1, c2) in presets {
+            let nc1 = NSColor(project.gradientColor1).usingColorSpace(.sRGB)
+            let nc2 = NSColor(project.gradientColor2).usingColorSpace(.sRGB)
+            let pc1 = NSColor(c1).usingColorSpace(.sRGB)
+            let pc2 = NSColor(c2).usingColorSpace(.sRGB)
+            if let nc1, let nc2, let pc1, let pc2,
+               abs(nc1.redComponent - pc1.redComponent) < 0.02,
+               abs(nc1.greenComponent - pc1.greenComponent) < 0.02,
+               abs(nc1.blueComponent - pc1.blueComponent) < 0.02,
+               abs(nc2.redComponent - pc2.redComponent) < 0.02,
+               abs(nc2.greenComponent - pc2.greenComponent) < 0.02,
+               abs(nc2.blueComponent - pc2.blueComponent) < 0.02 {
+                return name
+            }
         }
+        return nil
+    }
+
+    private var backgroundPresets: [(String, Color, Color)] {
+        [
+            ("Dark", Color(red: 0.08, green: 0.08, blue: 0.12), Color(red: 0.18, green: 0.12, blue: 0.28)),
+            ("Light", Color(red: 0.92, green: 0.92, blue: 0.96), Color(red: 0.85, green: 0.88, blue: 0.95)),
+            ("Ocean", Color(red: 0.05, green: 0.1, blue: 0.3), Color(red: 0.1, green: 0.2, blue: 0.5)),
+        ]
+    }
+
+    private func applyPreset(_ name: String) {
+        guard let preset = backgroundPresets.first(where: { $0.0 == name }) else { return }
+        project.gradientColor1 = preset.1
+        project.gradientColor2 = preset.2
+        project.updateVisuals()
     }
 
     // MARK: - Layout

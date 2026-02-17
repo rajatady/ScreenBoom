@@ -274,6 +274,58 @@ struct SBIconButton: View {
     }
 }
 
+// MARK: - Glass Tabs (segmented control)
+
+struct SBGlassTabs: View {
+    let items: [String]
+    var selection: String?
+    var onSelect: (String) -> Void
+
+    @State private var hoveredItem: String?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(items, id: \.self) { item in
+                tabButton(item)
+            }
+        }
+        .padding(2)
+        .background(tabBackground)
+        .overlay(tabBorder)
+        .animation(SB.Anim.springSnappy, value: selection)
+    }
+
+    private func tabButton(_ item: String) -> some View {
+        let isSelected = selection == item
+        let isHovered = hoveredItem == item
+        return Button { onSelect(item) } label: {
+            Text(item)
+                .font(SB.Typo.captionMedium)
+                .foregroundStyle(isSelected ? SB.Colors.textPrimary : SB.Colors.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, SB.Space.sm)
+                .background(tabItemBackground(selected: isSelected, hovered: isHovered))
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredItem = $0 ? item : nil }
+    }
+
+    private func tabItemBackground(selected: Bool, hovered: Bool) -> some View {
+        RoundedRectangle(cornerRadius: SB.Radius.sm, style: .continuous)
+            .fill(selected ? AnyShapeStyle(.thickMaterial) : (hovered ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.clear)))
+    }
+
+    private var tabBackground: some View {
+        RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
+            .fill(Color.white.opacity(0.04))
+    }
+
+    private var tabBorder: some View {
+        RoundedRectangle(cornerRadius: SB.Radius.md, style: .continuous)
+            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+    }
+}
+
 // MARK: - Page Background
 
 struct SBPageBackground: View {
