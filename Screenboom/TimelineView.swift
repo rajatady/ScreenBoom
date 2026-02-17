@@ -7,6 +7,8 @@ struct TimelineView: View {
     @State private var hoverFraction: CGFloat?
     private let splitGap: CGFloat = 4
 
+    private let zoomTrackHeight: CGFloat = 36
+
     var body: some View {
         VStack(spacing: 0) {
             segmentControlsBar
@@ -26,15 +28,29 @@ struct TimelineView: View {
                                 .mask(segmentShapes(width: zoomedWidth))
                         }
                         segmentOverlays(width: zoomedWidth)
-                        hoverIndicator(width: zoomedWidth)
-                        playhead(width: zoomedWidth)
+
+                        // Zoom track pinned to bottom
+                        if project.hasCursorData && !project.zoomRegions.isEmpty {
+                            zoomTrack(width: zoomedWidth)
+                                .frame(width: zoomedWidth, height: zoomTrackHeight)
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+                        }
+
+                        hoverIndicator(width: zoomedWidth, height: geo.size.height)
+                        playhead(width: zoomedWidth, height: geo.size.height)
                     }
                     .frame(width: zoomedWidth, height: geo.size.height)
                     .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
-                                handleTimelineInteraction(x: value.location.x, width: zoomedWidth)
+                                let y = value.location.y
+                                let zoomTrackTop = geo.size.height - zoomTrackHeight
+                                if project.hasCursorData && !project.zoomRegions.isEmpty && y >= zoomTrackTop {
+                                    handleZoomTrackInteraction(x: value.location.x, width: zoomedWidth)
+                                } else {
+                                    handleTimelineInteraction(x: value.location.x, width: zoomedWidth)
+                                }
                             }
                     )
                     .onContinuousHover { phase in
@@ -77,13 +93,35 @@ struct TimelineView: View {
         let fraction = max(0, min(1, x / width))
         let sourceTime = fraction * dur
 
-        // Select the segment at this source time
+        // Select the segment at this source time, deselect zoom region
         if let seg = project.segments.first(where: { sourceTime >= $0.startTime && sourceTime < $0.endTime })
             ?? project.segments.last {
             project.selectedSegmentId = seg.id
         }
+        project.selectedZoomRegionID = nil
 
         // Commit playhead and current time immediately, then seek
+        project.playheadTime = sourceTime
+        project.currentTime = sourceTime
+        project.seek(toFraction: fraction)
+    }
+
+    func handleZoomTrackInteraction(x: CGFloat, width: CGFloat) {
+        let dur = project.duration.seconds
+        guard dur > 0 else { return }
+
+        let fraction = max(0, min(1, x / width))
+        let sourceTime = fraction * dur
+
+        // Find zoom region at this time
+        if let region = project.zoomRegions.first(where: { sourceTime >= $0.startTime && sourceTime < $0.endTime }) {
+            project.selectedZoomRegionID = region.id
+            project.selectedSegmentId = nil
+        } else {
+            project.selectedZoomRegionID = nil
+        }
+
+        // Also seek
         project.playheadTime = sourceTime
         project.currentTime = sourceTime
         project.seek(toFraction: fraction)
@@ -157,7 +195,7 @@ struct TimelineView: View {
             .buttonStyle(.borderless)
             .help(project.showThumbnails ? "Solid view" : "Frame view")
 
-            // Zoom controls
+            // Timeline zoom controls
             HStack(spacing: 6) {
                 Button(action: { timelineZoom = max(1, timelineZoom - 1) }) {
                     Image(systemName: "minus.magnifyingglass")
@@ -281,6 +319,11 @@ struct TimelineView: View {
 
     func segmentShapes(width: CGFloat) -> some View {
         ZStack(alignment: .leading) {
+            // Invisible spacer to anchor the ZStack at full width —
+            // without this, .offset() children make the ZStack narrower
+            // than the thumbnail strip, causing the mask to mis-center.
+            Color.clear.frame(width: width, height: 80)
+
             ForEach(Array(project.segments.enumerated()), id: \.element.id) { index, _ in
                 let frame = segmentVisualFrame(index: index, totalWidth: width)
                 let cr = min(6.0, frame.width / 3)
@@ -312,12 +355,12 @@ struct TimelineView: View {
     // MARK: - Hover Indicator
 
     @ViewBuilder
-    func hoverIndicator(width: CGFloat) -> some View {
+    func hoverIndicator(width: CGFloat, height: CGFloat) -> some View {
         if let fraction = hoverFraction {
             let x = fraction * width
             Rectangle()
                 .fill(Color.white.opacity(0.5))
-                .frame(width: 1, height: 90)
+                .frame(width: 1, height: height + 10)
                 .offset(x: max(0, min(width - 1, x)))
                 .allowsHitTesting(false)
         }
@@ -325,14 +368,14 @@ struct TimelineView: View {
 
     // MARK: - Playhead
 
-    func playhead(width: CGFloat) -> some View {
+    func playhead(width: CGFloat, height: CGFloat) -> some View {
         let dur = project.duration.seconds
         let fraction = dur > 0 ? project.playheadTime / dur : 0
         let x = fraction * width
 
         return Rectangle()
             .fill(Color.red)
-            .frame(width: 2, height: 86)
+            .frame(width: 2, height: height + 6)
             .shadow(color: .red.opacity(0.5), radius: 4)
             .offset(x: max(0, min(width - 2, x)) - 1)
             .allowsHitTesting(false)
@@ -359,6 +402,80 @@ struct TimelineView: View {
         }
     }
 
+    // MARK: - Zoom Track
+
+    func zoomTrack(width: CGFloat) -> some View {
+        let dur = project.duration.seconds
+
+        return ZStack(alignment: .leading) {
+            // Baseline
+            VStack {
+                Spacer()
+                Rectangle()
+                    .fill(SB.Colors.border)
+                    .frame(height: 1)
+            }
+
+            // Zoom regions as trapezoid shapes
+            if dur > 0 {
+                ForEach(project.zoomRegions) { region in
+                    zoomRegionShape(region: region, totalWidth: width, duration: dur)
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func zoomRegionShape(region: ZoomRegion, totalWidth: CGFloat, duration: Double) -> some View {
+        let isSelected = project.selectedZoomRegionID == region.id
+        let sensitivity = project.cursorSettings.autoZoomSensitivity
+
+        let startX = (region.startTime / duration) * totalWidth
+        let endX = (region.endTime / duration) * totalWidth
+        let regionWidth = max(4, endX - startX)
+
+        // Ramp durations as proportion of region width
+        let regionDuration = region.endTime - region.startTime
+        let rampInFraction = regionDuration > 0.01 ? min(0.35, sensitivity.zoomInDuration / regionDuration) : 0.2
+        let rampOutFraction = regionDuration > 0.01 ? min(0.35, sensitivity.zoomOutDuration / regionDuration) : 0.2
+
+        // Peak height proportional to zoom level (2x = 50%, 4x = 100%)
+        let normalizedZoom = min(1.0, (region.zoomLevel - 1.0) / 3.0) // 1.0 -> 0, 4.0 -> 1.0
+        let peakHeight = zoomTrackHeight * 0.85 * normalizedZoom
+
+        let fillColor = region.isEnabled
+            ? (isSelected ? SB.Colors.accent.opacity(0.45) : SB.Colors.accent.opacity(0.25))
+            : Color.gray.opacity(0.2)
+        let strokeColor = region.isEnabled
+            ? (isSelected ? SB.Colors.accent : SB.Colors.accent.opacity(0.4))
+            : Color.gray.opacity(0.4)
+
+        return ZStack {
+            // Trapezoid shape
+            TrapezoidShape(rampInFraction: rampInFraction, rampOutFraction: rampOutFraction)
+                .fill(fillColor)
+                .frame(width: regionWidth, height: peakHeight)
+
+            TrapezoidShape(rampInFraction: rampInFraction, rampOutFraction: rampOutFraction)
+                .stroke(strokeColor, style: region.isEnabled
+                    ? StrokeStyle(lineWidth: isSelected ? 1.5 : 1)
+                    : StrokeStyle(lineWidth: 1, dash: [4, 3])
+                )
+                .frame(width: regionWidth, height: peakHeight)
+
+            // Zoom label at peak center
+            if regionWidth > 30 {
+                Text(String(format: "%.1fx", region.zoomLevel))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(region.isEnabled ? SB.Colors.textSecondary : SB.Colors.textTertiary)
+                    .offset(y: -2)
+            }
+        }
+        .frame(width: regionWidth, height: peakHeight)
+        .offset(x: startX, y: (zoomTrackHeight - peakHeight) / 2 - 2)
+        .allowsHitTesting(false) // hit testing handled by the track gesture
+    }
+
     // MARK: - Helpers
 
     func splitIndexForSegment(_ segmentId: UUID) -> Int? {
@@ -372,5 +489,30 @@ struct TimelineView: View {
         let s = Int(seconds) % 60
         let ms = Int((seconds.truncatingRemainder(dividingBy: 1)) * 10)
         return String(format: "%d:%02d.%d", m, s, ms)
+    }
+}
+
+// MARK: - Trapezoid Shape (zoom region mountain)
+
+struct TrapezoidShape: Shape {
+    var rampInFraction: CGFloat
+    var rampOutFraction: CGFloat
+
+    nonisolated func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let rampInW = rect.width * rampInFraction
+        let rampOutW = rect.width * rampOutFraction
+
+        // Start at bottom-left
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        // Ramp up to peak
+        path.addLine(to: CGPoint(x: rect.minX + rampInW, y: rect.minY))
+        // Flat peak
+        path.addLine(to: CGPoint(x: rect.maxX - rampOutW, y: rect.minY))
+        // Ramp down
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+
+        return path
     }
 }

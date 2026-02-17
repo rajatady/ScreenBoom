@@ -6,14 +6,21 @@ final class CursorTracker {
     private(set) var events: [CursorEvent] = []
     private(set) var isTracking = false
 
+    /// Screen origin of the capture area (set before startTracking)
+    var captureOrigin: CGPoint = .zero
+
     private var moveMonitor: Any?
     private var clickMonitor: Any?
     private var scrollMonitor: Any?
+    private var keyMonitor: Any?
     private var lastMoveTimestamp: TimeInterval = 0
+    private var lastKeyTimestamp: TimeInterval = 0
     private var trackingStartDate: Date?
 
     // 120Hz move sampling — minimum 1/120s between move events
     private let moveInterval: TimeInterval = 1.0 / 120.0
+    // 4Hz key sampling — we only need activity regions, not every keystroke
+    private let keyInterval: TimeInterval = 1.0 / 4.0
 
     func startTracking() {
         guard !isTracking else { return }
@@ -32,6 +39,10 @@ final class CursorTracker {
         scrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handleScroll(event)
         }
+
+        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleKeyDown(event)
+        }
     }
 
     func stopTracking() {
@@ -41,9 +52,11 @@ final class CursorTracker {
         if let m = moveMonitor { NSEvent.removeMonitor(m) }
         if let m = clickMonitor { NSEvent.removeMonitor(m) }
         if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+        if let m = keyMonitor { NSEvent.removeMonitor(m) }
         moveMonitor = nil
         clickMonitor = nil
         scrollMonitor = nil
+        keyMonitor = nil
     }
 
     func writeMetadata(to url: URL, frameRate: Double, sourceSize: CGSize) throws {
@@ -52,6 +65,10 @@ final class CursorTracker {
             sourceSize: CursorMetadataFile.CodableSize(
                 width: Double(sourceSize.width),
                 height: Double(sourceSize.height)
+            ),
+            captureOrigin: CursorMetadataFile.CodablePoint(
+                x: Double(captureOrigin.x),
+                y: Double(captureOrigin.y)
             ),
             events: events
         )
@@ -83,6 +100,16 @@ final class CursorTracker {
     private func handleScroll(_ event: NSEvent) {
         let location = NSEvent.mouseLocation
         appendEvent(type: .scroll, location: location, button: nil)
+    }
+
+    private func handleKeyDown(_ event: NSEvent) {
+        let now = event.timestamp
+        guard now - lastKeyTimestamp >= keyInterval else { return }
+        lastKeyTimestamp = now
+
+        // Record at current cursor position — we care about WHERE typing happens, not WHAT
+        let location = NSEvent.mouseLocation
+        appendEvent(type: .keyDown, location: location, button: nil)
     }
 
     private func appendEvent(type: CursorEvent.EventType, location: NSPoint, button: CursorEvent.Button?) {

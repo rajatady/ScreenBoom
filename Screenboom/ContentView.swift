@@ -49,7 +49,7 @@ struct ContentView: View {
                 Divider()
 
                 TimelineView(project: project)
-                    .frame(height: 200)
+                    .frame(height: project.hasCursorData ? 240 : 200)
             }
 
             ControlsPanel(project: project)

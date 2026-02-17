@@ -17,7 +17,8 @@ enum FrameRenderer {
     nonisolated static func makeVideoComposition(
         for asset: AVAsset,
         sourceSize: CGSize,
-        settings: Settings
+        settings: Settings,
+        cursorOverlayState: CursorOverlayState? = nil
     ) -> AVMutableVideoComposition {
         let outputSize = settings.outputSize
         let outputRect = CGRect(origin: .zero, size: outputSize)
@@ -55,21 +56,40 @@ enum FrameRenderer {
 
         // Capture values for the Sendable closure
         let recRect = recordingRect
+        let cursorState = cursorOverlayState
 
         let videoComposition = AVMutableVideoComposition(asset: asset, applyingCIFiltersWithHandler: { request in
             let sourceExtent = request.sourceImage.extent
 
+            // Auto-zoom: crop source to a smaller region before scaling
+            var sourceImage = request.sourceImage
+            var effectiveExtent = sourceExtent
+            var activeZoomCrop: CGRect?
+
+            if let cursorState {
+                let frameTime = request.compositionTime.seconds
+                if let cropRect = CursorOverlayEngine.zoomCropRect(
+                    in: cursorState,
+                    at: frameTime,
+                    sourceExtent: sourceExtent
+                ) {
+                    sourceImage = sourceImage.cropped(to: cropRect)
+                    effectiveExtent = sourceImage.extent
+                    activeZoomCrop = cropRect
+                }
+            }
+
             // Scale source to fit recording area
-            let scaleX = recRect.width / sourceExtent.width
-            let scaleY = recRect.height / sourceExtent.height
+            let scaleX = recRect.width / effectiveExtent.width
+            let scaleY = recRect.height / effectiveExtent.height
             let scale = min(scaleX, scaleY)
 
-            let scaledW = sourceExtent.width * scale
-            let scaledH = sourceExtent.height * scale
-            let offsetX = recRect.midX - scaledW / 2
-            let offsetY = recRect.midY - scaledH / 2
+            let scaledW = effectiveExtent.width * scale
+            let scaledH = effectiveExtent.height * scale
+            let offsetX = recRect.midX - scaledW / 2 - effectiveExtent.origin.x * scale
+            let offsetY = recRect.midY - scaledH / 2 - effectiveExtent.origin.y * scale
 
-            let positioned = request.sourceImage
+            let positioned = sourceImage
                 .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 .transformed(by: CGAffineTransform(translationX: offsetX, y: offsetY))
                 .cropped(to: recRect)
@@ -81,8 +101,23 @@ enum FrameRenderer {
                     kCIInputMaskImageKey: maskImage
                 ])
 
+            // Cursor + click effect overlay
+            var withCursor = rounded
+            if let cursorState {
+                let frameTime = request.compositionTime.seconds
+                if let cursorComposite = CursorOverlayEngine.cursorComposite(
+                    in: cursorState,
+                    at: frameTime,
+                    recordingRect: recRect,
+                    outputSize: outputSize,
+                    zoomCropRect: activeZoomCrop
+                ) {
+                    withCursor = cursorComposite.composited(over: withCursor)
+                }
+            }
+
             // Composite: recording over shadow over background
-            let result = rounded
+            let result = withCursor
                 .composited(over: shadowImage)
                 .composited(over: backgroundImage)
                 .cropped(to: outputRect)

@@ -184,15 +184,17 @@ enum CompositionEngine {
         }
         reader.add(readerOutput)
 
-        // Writer
+        // Writer — HEVC for sharp screen content, bitrate scaled by resolution
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        let pixelCount = Int(outputSize.width * outputSize.height)
+        let bitrate = min(80_000_000, max(20_000_000, pixelCount * 15))
         let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: AVVideoCodecType.hevc,
             AVVideoWidthKey: Int(outputSize.width),
             AVVideoHeightKey: Int(outputSize.height),
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 15_000_000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                AVVideoAverageBitRateKey: bitrate,
+                AVVideoMaxKeyFrameIntervalKey: 30
             ] as [String: Any]
         ]
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
@@ -243,6 +245,40 @@ enum CompositionEngine {
                 }
             }
         }
+    }
+
+    // MARK: - Time Remap Table (for cursor overlay in export)
+
+    /// Builds a mapping from composition time → source time, accounting for speed changes.
+    /// The CIFilter handler receives composition time, but cursor events are in source time.
+    nonisolated static func buildTimeRemapTable(segments: [Segment]) -> TimeRemapTable {
+        guard !segments.isEmpty else { return TimeRemapTable(entries: []) }
+
+        let expandedSegments = expandWithRamps(segments)
+        var entries: [TimeRemapEntry] = []
+
+        // Walk through expanded segments, computing composition time for each source time
+        var compositionTime = 0.0
+        let samplesPerSecond = 60.0  // 60 samples per second of composition time
+
+        for seg in expandedSegments {
+            let sourceDuration = seg.sourceDuration
+            let compositionDuration = sourceDuration / seg.speed
+            let steps = max(1, Int(compositionDuration * samplesPerSecond))
+            let compStep = compositionDuration / Double(steps)
+            let sourceStep = sourceDuration / Double(steps)
+
+            for i in 0...steps {
+                entries.append(TimeRemapEntry(
+                    compositionTime: compositionTime + Double(i) * compStep,
+                    sourceTime: seg.sourceStart + Double(i) * sourceStep
+                ))
+            }
+
+            compositionTime += compositionDuration
+        }
+
+        return TimeRemapTable(entries: entries)
     }
 
     enum ExportError: Error, LocalizedError {

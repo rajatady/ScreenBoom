@@ -162,6 +162,17 @@ final class ScreenRecorder {
 
             if enableCursorTracking {
                 let tracker = CursorTracker()
+                // Set capture origin so cursor coordinates can be mapped to video coordinates
+                switch captureMode {
+                case .display:
+                    if let display = selectedDisplay {
+                        tracker.captureOrigin = CGPoint(x: CGFloat(display.frame.origin.x), y: CGFloat(display.frame.origin.y))
+                    }
+                case .window:
+                    if let window = selectedWindow {
+                        tracker.captureOrigin = window.frame.origin
+                    }
+                }
                 cursorTracker = tracker
                 tracker.startTracking()
             }

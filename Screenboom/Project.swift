@@ -23,6 +23,29 @@ struct SavedState: Codable {
     var playheadTime: Double
     var showThumbnails: Bool?
 
+    // Cursor settings (all optional for backward compatibility)
+    var cursorEnabled: Bool?
+    var cursorStyle: String?
+    var cursorSize: Double?
+    var clickEffectEnabled: Bool?
+    var clickEffectColor: [Double]?
+    var clickEffectMaxRadius: Double?
+    var clickEffectDuration: Double?
+    var autoZoomEnabled: Bool?
+    var autoZoomLevel: Double?
+    var autoZoomSensitivity: String?
+    var zoomRegions: [SavedZoomRegion]?
+
+    struct SavedZoomRegion: Codable {
+        var id: String
+        var startTime: Double
+        var endTime: Double
+        var zoomLevel: Double
+        var focusX: Double
+        var focusY: Double
+        var isEnabled: Bool
+    }
+
     struct SavedSegment: Codable {
         var startTime: Double
         var endTime: Double
@@ -91,6 +114,14 @@ final class Project {
 
     var cursorMetadataURL: URL?
     var recordingSession: RecordingSession?
+    var cursorSettings = CursorSettings()
+    var cursorOverlayState: CursorOverlayState?
+    private var cursorMetadata: CursorMetadataFile?
+
+    var hasCursorData: Bool { cursorMetadata != nil }
+
+    var zoomRegions: [ZoomRegion] = []
+    var selectedZoomRegionID: UUID?
 
     var currentProjectID: UUID?
     var store: ProjectStore?
@@ -275,6 +306,18 @@ final class Project {
         let nsColor1 = NSColor(gradientColor1).usingColorSpace(.sRGB) ?? NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1)
         let nsColor2 = NSColor(gradientColor2).usingColorSpace(.sRGB) ?? NSColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 1)
 
+        let savedZoomRegions: [SavedState.SavedZoomRegion]? = zoomRegions.isEmpty ? nil : zoomRegions.map {
+            SavedState.SavedZoomRegion(
+                id: $0.id.uuidString,
+                startTime: $0.startTime,
+                endTime: $0.endTime,
+                zoomLevel: Double($0.zoomLevel),
+                focusX: $0.focusX,
+                focusY: $0.focusY,
+                isEnabled: $0.isEnabled
+            )
+        }
+
         let state = SavedState(
             sourceURLBookmark: bookmark,
             sourceURLPath: sourceURL?.path,
@@ -291,7 +334,18 @@ final class Project {
             outputWidth: Double(outputWidth),
             outputHeight: Double(outputHeight),
             playheadTime: playheadTime,
-            showThumbnails: showThumbnails
+            showThumbnails: showThumbnails,
+            cursorEnabled: cursorSettings.isEnabled,
+            cursorStyle: cursorSettings.style.rawValue,
+            cursorSize: Double(cursorSettings.size),
+            clickEffectEnabled: cursorSettings.clickEffectEnabled,
+            clickEffectColor: cursorSettings.clickEffectColor,
+            clickEffectMaxRadius: Double(cursorSettings.clickEffectMaxRadius),
+            clickEffectDuration: cursorSettings.clickEffectDuration,
+            autoZoomEnabled: cursorSettings.autoZoomEnabled,
+            autoZoomLevel: Double(cursorSettings.autoZoomLevel),
+            autoZoomSensitivity: cursorSettings.autoZoomSensitivity.rawValue,
+            zoomRegions: savedZoomRegions
         )
         guard let projectID = currentProjectID, let store else { return }
         state.write(to: store.stateFileURL(for: projectID))
@@ -325,6 +379,34 @@ final class Project {
         outputWidth = CGFloat(state.outputWidth)
         outputHeight = CGFloat(state.outputHeight)
         showThumbnails = state.showThumbnails ?? true
+
+        // Restore cursor settings
+        if let enabled = state.cursorEnabled { cursorSettings.isEnabled = enabled }
+        if let style = state.cursorStyle, let s = CursorStyle(rawValue: style) { cursorSettings.style = s }
+        if let size = state.cursorSize { cursorSettings.size = CGFloat(size) }
+        if let clickEnabled = state.clickEffectEnabled { cursorSettings.clickEffectEnabled = clickEnabled }
+        if let clickColor = state.clickEffectColor { cursorSettings.clickEffectColor = clickColor }
+        if let maxR = state.clickEffectMaxRadius { cursorSettings.clickEffectMaxRadius = CGFloat(maxR) }
+        if let clickDur = state.clickEffectDuration { cursorSettings.clickEffectDuration = clickDur }
+        if let zoomEnabled = state.autoZoomEnabled { cursorSettings.autoZoomEnabled = zoomEnabled }
+        if let zoomLevel = state.autoZoomLevel { cursorSettings.autoZoomLevel = CGFloat(zoomLevel) }
+        if let zoomSens = state.autoZoomSensitivity, let s = AutoZoomSensitivity(rawValue: zoomSens) { cursorSettings.autoZoomSensitivity = s }
+
+        // Restore zoom regions
+        if let savedRegions = state.zoomRegions {
+            zoomRegions = savedRegions.compactMap { saved in
+                guard let uuid = UUID(uuidString: saved.id) else { return nil }
+                return ZoomRegion(
+                    id: uuid,
+                    startTime: saved.startTime,
+                    endTime: saved.endTime,
+                    zoomLevel: CGFloat(saved.zoomLevel),
+                    focusX: saved.focusX,
+                    focusY: saved.focusY,
+                    isEnabled: saved.isEnabled
+                )
+            }
+        }
 
         // Restore video: try bookmark first, fall back to stored path
         var url: URL?
@@ -374,6 +456,15 @@ final class Project {
 
                 if self.segments.isEmpty {
                     self.segments = [Segment(startTime: 0, endTime: dur.seconds, speed: 1.0, isEnabled: true)]
+                }
+
+                // Load cursor metadata if available
+                if let projectID = self.currentProjectID, let store = self.store {
+                    let cursorMetaURL = store.projectDirectory(for: projectID).appendingPathComponent("recording.cursor.json")
+                    if FileManager.default.fileExists(atPath: cursorMetaURL.path) {
+                        self.cursorMetadataURL = cursorMetaURL
+                        self.loadCursorMetadata()
+                    }
                 }
 
                 self.rebuildPlayer()
@@ -481,6 +572,11 @@ final class Project {
         thumbnails = []
         cursorMetadataURL = nil
         recordingSession = nil
+        cursorMetadata = nil
+        cursorOverlayState = nil
+        cursorSettings = CursorSettings()
+        zoomRegions = []
+        selectedZoomRegionID = nil
         undoStack = []
         redoStack = []
         currentProjectID = nil
@@ -532,12 +628,20 @@ final class Project {
             if (try? FileManager.default.copyItem(at: session.videoURL, to: destURL)) != nil {
                 videoURL = destURL
             }
+
+            // Copy cursor metadata alongside video
+            if let cursorURL = session.cursorMetadataURL {
+                let destCursorURL = projectDir.appendingPathComponent("recording.cursor.json")
+                try? FileManager.default.copyItem(at: cursorURL, to: destCursorURL)
+                self.cursorMetadataURL = destCursorURL
+            }
+        } else {
+            self.cursorMetadataURL = session.cursorMetadataURL
         }
 
         let loadedAsset = AVAsset(url: videoURL)
         self.sourceURL = videoURL
         self.asset = loadedAsset
-        self.cursorMetadataURL = session.cursorMetadataURL
         self.recordingSession = session
 
         Task {
@@ -553,6 +657,7 @@ final class Project {
                 self.segments = [
                     Segment(startTime: 0, endTime: dur.seconds, speed: 1.0, isEnabled: true)
                 ]
+                self.loadCursorMetadata()
                 self.rebuildPlayer()
                 self.generateThumbnails()
                 self.saveState()
@@ -564,6 +669,102 @@ final class Project {
                 print("Failed to load recording: \(error)")
             }
         }
+    }
+
+    // MARK: - Cursor Intelligence
+
+    func loadCursorMetadata() {
+        guard let url = cursorMetadataURL else {
+            cursorMetadata = nil
+            cursorOverlayState = nil
+            return
+        }
+        guard let data = try? Data(contentsOf: url),
+              let metadata = try? JSONDecoder().decode(CursorMetadataFile.self, from: data) else {
+            logger.warning("loadCursorMetadata: failed to decode \(url.path)")
+            cursorMetadata = nil
+            cursorOverlayState = nil
+            return
+        }
+        cursorMetadata = metadata
+        logger.warning("loadCursorMetadata: loaded \(metadata.events.count) events")
+        rebuildCursorOverlay()
+    }
+
+    func rebuildCursorOverlay() {
+        guard let metadata = cursorMetadata, cursorSettings.isEnabled else {
+            cursorOverlayState = nil
+            return
+        }
+        let frameRate: Double
+        if let track = asset?.tracks(withMediaType: .video).first {
+            frameRate = Double(track.nominalFrameRate > 0 ? track.nominalFrameRate : 30)
+        } else {
+            frameRate = 30
+        }
+        cursorOverlayState = CursorOverlayEngine.prepare(
+            metadata: metadata,
+            settings: cursorSettings,
+            outputFrameRate: frameRate,
+            zoomRegions: zoomRegions
+        )
+    }
+
+    func generateAutoZoomRegions() {
+        guard let metadata = cursorMetadata else { return }
+        let (clicks, keyInteractions, sourceSize) = CursorOverlayEngine.extractInteractions(from: metadata)
+        zoomRegions = CursorOverlayEngine.generateZoomRegions(
+            clicks: clicks,
+            keyInteractions: keyInteractions,
+            sensitivity: cursorSettings.autoZoomSensitivity,
+            zoomLevel: cursorSettings.autoZoomLevel,
+            sourceSize: sourceSize
+        )
+        selectedZoomRegionID = nil
+        rebuildCursorOverlay()
+        updateVisuals()
+    }
+
+    func deleteZoomRegion(_ id: UUID) {
+        zoomRegions.removeAll { $0.id == id }
+        if selectedZoomRegionID == id { selectedZoomRegionID = nil }
+        rebuildCursorOverlay()
+        updateVisuals()
+    }
+
+    func toggleZoomRegion(_ id: UUID) {
+        guard let idx = zoomRegions.firstIndex(where: { $0.id == id }) else { return }
+        zoomRegions[idx].isEnabled.toggle()
+        rebuildCursorOverlay()
+        updateVisuals()
+    }
+
+    func setZoomRegionLevel(_ level: CGFloat, for id: UUID) {
+        guard let idx = zoomRegions.firstIndex(where: { $0.id == id }) else { return }
+        zoomRegions[idx].zoomLevel = max(1.1, min(4.0, level))
+        rebuildCursorOverlay()
+        updateVisuals()
+    }
+
+    func setZoomRegionFocus(x: Double, y: Double, for id: UUID) {
+        guard let idx = zoomRegions.firstIndex(where: { $0.id == id }) else { return }
+        // Clamp focus so zoom crop stays within video bounds
+        let zoom = zoomRegions[idx].zoomLevel
+        let halfW = (videoSize.width / zoom) / 2
+        let halfH = (videoSize.height / zoom) / 2
+        zoomRegions[idx].focusX = max(halfW, min(videoSize.width - halfW, x))
+        zoomRegions[idx].focusY = max(halfH, min(videoSize.height - halfH, y))
+        rebuildCursorOverlay()
+        updateVisuals()
+    }
+
+    /// Seek to a zoom region's start time so the preview shows the zoom effect
+    func seekToZoomRegion(_ id: UUID) {
+        guard let region = zoomRegions.first(where: { $0.id == id }) else { return }
+        let time = region.startTime
+        playheadTime = time
+        currentTime = time
+        seek(toFraction: time / duration.seconds)
     }
 
     // MARK: - Player
@@ -588,7 +789,8 @@ final class Project {
         let videoComp = FrameRenderer.makeVideoComposition(
             for: asset,
             sourceSize: videoSize,
-            settings: renderSettings
+            settings: renderSettings,
+            cursorOverlayState: cursorOverlayState
         )
 
         let item = AVPlayerItem(asset: asset)
@@ -659,7 +861,8 @@ final class Project {
         let videoComp = FrameRenderer.makeVideoComposition(
             for: asset,
             sourceSize: videoSize,
-            settings: renderSettings
+            settings: renderSettings,
+            cursorOverlayState: cursorOverlayState
         )
         playerItem?.videoComposition = videoComp
         saveState()
@@ -878,10 +1081,19 @@ final class Project {
         try? FileManager.default.removeItem(at: url)
 
         let composition = CompositionEngine.buildComposition(asset: asset, segments: enabledSegments)
+
+        // Build cursor state remapped to composition timeline for export
+        var exportCursorState: CursorOverlayState?
+        if let cursorState = cursorOverlayState {
+            let remapTable = CompositionEngine.buildTimeRemapTable(segments: enabledSegments)
+            exportCursorState = CursorOverlayEngine.remapForExport(state: cursorState, remapTable: remapTable)
+        }
+
         let videoComp = FrameRenderer.makeVideoComposition(
             for: composition,
             sourceSize: videoSize,
-            settings: renderSettings
+            settings: renderSettings,
+            cursorOverlayState: exportCursorState
         )
 
         guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {

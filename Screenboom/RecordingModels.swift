@@ -8,6 +8,7 @@ struct CursorEvent: Codable, Sendable {
         case click
         case release
         case scroll
+        case keyDown
     }
 
     enum Button: String, Codable, Sendable {
@@ -28,11 +29,17 @@ struct CursorMetadataFile: Codable, Sendable {
     var version: Int = 1
     var frameRate: Double
     var sourceSize: CodableSize
+    var captureOrigin: CodablePoint?  // screen origin of capture area (optional for backward compat)
     var events: [CursorEvent]
 
     struct CodableSize: Codable, Sendable {
         var width: Double
         var height: Double
+    }
+
+    struct CodablePoint: Codable, Sendable {
+        var x: Double
+        var y: Double
     }
 }
 
