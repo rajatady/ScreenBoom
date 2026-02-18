@@ -185,6 +185,7 @@ struct ContextualInspectorView: View {
                 .background(Circle().fill(SB.Glass.subtle))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("inspector_dismiss_button")
     }
 
     private func inspectorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

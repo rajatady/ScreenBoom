@@ -338,6 +338,7 @@ struct SBIconTabBar<Tab: Hashable>: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("editor_tab_" + tab.label.lowercased().replacingOccurrences(of: " ", with: "_"))
         .onHover { hoveredTab = $0 ? tab.id : nil }
         .opacity(tab.enabled ? 1.0 : 0.3)
         .help(tab.label + (tab.enabled ? "" : " (Coming Soon)"))

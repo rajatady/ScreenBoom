@@ -105,6 +105,8 @@ struct ExportPopupView: View {
                         .background(Circle().fill(SB.Glass.subtle))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close export")
+                .accessibilityIdentifier("export_popup_close_button")
             }
 
             // Resolution picker
@@ -149,6 +151,7 @@ struct ExportPopupView: View {
                     onDismiss()
                 }
                 .disabled(project.segments.filter(\.isEnabled).isEmpty)
+                .accessibilityIdentifier("export_popup_confirm_button")
             }
         }
         .padding(SB.Space.xl)
@@ -170,6 +173,7 @@ struct ExportPopupView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: SB.Radius.lg, style: .continuous))
         .sbShadow(SB.Shadows.popup)
+        .accessibilityIdentifier("export_popup_root")
     }
 
     private var currentResolutionLabel: String? {

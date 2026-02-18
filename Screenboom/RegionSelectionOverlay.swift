@@ -4,23 +4,52 @@ import os
 
 private let regionLog = Logger(subsystem: "com.trymagically.Screenboom", category: "RegionSelect")
 
-// MARK: - Persisted Region Size
+// MARK: - Persisted Region Rect
 
-private enum RegionDefaults {
+enum RegionDefaults {
     static let widthKey = "RegionSelection.lastWidth"
     static let heightKey = "RegionSelection.lastHeight"
+    static let xKey = "RegionSelection.lastX"
+    static let yKey = "RegionSelection.lastY"
+    /// Tracks which screen the rect was saved on (by screen.frame description)
+    static let screenKey = "RegionSelection.lastScreenFrame"
 
-    static var lastSize: CGSize {
+    static let defaultSize = CGSize(width: 1280, height: 720)
+
+    /// Full rect (position + size) persisted from last session.
+    /// Returns nil if no valid rect was previously saved.
+    static var lastRect: CGRect? {
         get {
             let w = UserDefaults.standard.double(forKey: widthKey)
             let h = UserDefaults.standard.double(forKey: heightKey)
-            if w > 100 && h > 100 { return CGSize(width: w, height: h) }
-            return CGSize(width: 1280, height: 720)
+            guard w >= 100, h >= 100 else { return nil }
+            let x = UserDefaults.standard.double(forKey: xKey)
+            let y = UserDefaults.standard.double(forKey: yKey)
+            return CGRect(x: x, y: y, width: w, height: h)
         }
         set {
-            UserDefaults.standard.set(newValue.width, forKey: widthKey)
-            UserDefaults.standard.set(newValue.height, forKey: heightKey)
+            if let rect = newValue {
+                UserDefaults.standard.set(rect.origin.x, forKey: xKey)
+                UserDefaults.standard.set(rect.origin.y, forKey: yKey)
+                UserDefaults.standard.set(rect.size.width, forKey: widthKey)
+                UserDefaults.standard.set(rect.size.height, forKey: heightKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: xKey)
+                UserDefaults.standard.removeObject(forKey: yKey)
+                UserDefaults.standard.removeObject(forKey: widthKey)
+                UserDefaults.standard.removeObject(forKey: heightKey)
+            }
         }
+    }
+
+    /// The size to use when no saved rect exists, or as a fallback.
+    static var lastSize: CGSize {
+        lastRect?.size ?? defaultSize
+    }
+
+    static var lastScreenFrame: String? {
+        get { UserDefaults.standard.string(forKey: screenKey) }
+        set { UserDefaults.standard.set(newValue, forKey: screenKey) }
     }
 }
 
@@ -29,22 +58,25 @@ private enum RegionDefaults {
 @Observable
 final class RegionSelectorManager {
     private var overlayWindows: [RegionSelectionWindow] = []
-    private var onRegionSelected: ((CGRect) -> Void)?
+    private var onRegionSelected: ((CGRect, NSScreen) -> Void)?
     private var onCancelledCallback: (() -> Void)?
 
     /// Show region selection overlay on all screens.
     /// - Parameters:
-    ///   - onSelected: Called with the screen-coordinate rect when the user confirms.
+    ///   - onSelected: Called with the screen-coordinate rect and the screen it was drawn on.
     ///   - onCancelled: Called when the user cancels (Escape) or selection is programmatically dismissed.
-    func startSelection(onSelected: @escaping (CGRect) -> Void, onCancelled: (() -> Void)? = nil) {
+    func startSelection(onSelected: @escaping (CGRect, NSScreen) -> Void, onCancelled: (() -> Void)? = nil) {
         forceClose()
         onRegionSelected = onSelected
         onCancelledCallback = onCancelled
 
+        let savedRect = RegionDefaults.lastRect
+
         for screen in NSScreen.screens {
             let window = RegionSelectionWindow(
                 screen: screen,
-                initialSize: RegionDefaults.lastSize,
+                initialRect: savedRect,
+                fallbackSize: RegionDefaults.defaultSize,
                 onSelected: { [weak self] rect in
                     self?.handleSelection(rect, from: screen)
                 },
@@ -58,8 +90,22 @@ final class RegionSelectorManager {
                 }
             )
             overlayWindows.append(window)
-            window.makeKeyAndOrderFront(nil)
         }
+
+        // Order all windows front (orderFrontRegardless ensures visibility
+        // even on non-primary screens), then make the mouse-screen window key.
+        let mouseLocation = NSEvent.mouseLocation
+        var keyWindow: RegionSelectionWindow?
+        for (i, window) in overlayWindows.enumerated() {
+            window.orderFrontRegardless()
+            if NSScreen.screens.indices.contains(i) {
+                let screen = NSScreen.screens[i]
+                if screen.frame.contains(mouseLocation) {
+                    keyWindow = window
+                }
+            }
+        }
+        (keyWindow ?? overlayWindows.first)?.makeKey()
     }
 
     /// Programmatically cancel the selection. Fires the onCancelled callback.
@@ -96,7 +142,8 @@ final class RegionSelectorManager {
         // viewRect is display-relative top-left coords (view is flipped).
         // SCStreamConfiguration.sourceRect uses the SAME coordinate system
         // (display coordinates, top-left origin). Pass viewRect directly — no Y-flip.
-        RegionDefaults.lastSize = viewRect.size
+        RegionDefaults.lastRect = viewRect
+        RegionDefaults.lastScreenFrame = screen.frame.debugDescription
 
         regionLog.info("""
         [REGION] handleSelection:
@@ -110,7 +157,7 @@ final class RegionSelectorManager {
         onRegionSelected = nil
         onCancelledCallback = nil
         teardownWindows()
-        callback?(viewRect)
+        callback?(viewRect, screen)
     }
 }
 
@@ -118,7 +165,7 @@ final class RegionSelectorManager {
 
 final class RegionSelectionWindow: NSWindow {
 
-    init(screen: NSScreen, initialSize: CGSize, onSelected: @escaping (CGRect) -> Void, onCancelled: @escaping () -> Void) {
+    init(screen: NSScreen, initialRect: CGRect?, fallbackSize: CGSize, onSelected: @escaping (CGRect) -> Void, onCancelled: @escaping () -> Void) {
         super.init(
             contentRect: screen.frame,
             styleMask: [.borderless],
@@ -139,7 +186,8 @@ final class RegionSelectionWindow: NSWindow {
         let selectionView = RegionSelectionView(
             frame: NSRect(origin: .zero, size: screen.frame.size),
             screenSize: screen.frame.size,
-            initialSize: initialSize,
+            initialRect: initialRect,
+            fallbackSize: fallbackSize,
             onSelected: onSelected,
             onCancelled: onCancelled
         )
@@ -193,15 +241,24 @@ final class RegionSelectionView: NSView {
     private let hintFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     private let labelBgColor = NSColor.black.withAlphaComponent(0.75) // sb-exempt — CGContext drawing
 
-    init(frame: NSRect, screenSize: CGSize, initialSize: CGSize, onSelected: @escaping (CGRect) -> Void, onCancelled: @escaping () -> Void) {
-        let w = min(initialSize.width, screenSize.width - 40)
-        let h = min(initialSize.height, screenSize.height - 40)
-        self.selectionRect = CGRect(
-            x: (screenSize.width - w) / 2,
-            y: (screenSize.height - h) / 2,
-            width: w,
-            height: h
-        )
+    init(frame: NSRect, screenSize: CGSize, initialRect: CGRect?, fallbackSize: CGSize, onSelected: @escaping (CGRect) -> Void, onCancelled: @escaping () -> Void) {
+        if let saved = initialRect,
+           saved.width >= 100, saved.height >= 100,
+           saved.maxX <= screenSize.width, saved.maxY <= screenSize.height,
+           saved.origin.x >= 0, saved.origin.y >= 0 {
+            // Restore exact saved position + size
+            self.selectionRect = saved
+        } else {
+            // No saved rect, or it doesn't fit this screen — center with fallback size
+            let w = min(fallbackSize.width, screenSize.width - 40)
+            let h = min(fallbackSize.height, screenSize.height - 40)
+            self.selectionRect = CGRect(
+                x: (screenSize.width - w) / 2,
+                y: (screenSize.height - h) / 2,
+                width: w,
+                height: h
+            )
+        }
         self.screenSize = screenSize
         self.onSelected = onSelected
         self.onCancelled = onCancelled
@@ -479,6 +536,11 @@ final class RegionSelectionView: NSView {
 
         str.draw(at: NSPoint(x: bgRect.minX + pad, y: bgRect.minY + (bgH - size.height) / 2))
     }
+
+#if DEBUG
+    /// Expose internal selection rect for test diagnostics
+    var _selectionRectForTesting: CGRect { selectionRect }
+#endif
 
     private func clampToScreen(_ rect: CGRect) -> CGRect {
         var r = rect

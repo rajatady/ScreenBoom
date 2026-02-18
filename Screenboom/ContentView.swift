@@ -28,6 +28,11 @@ struct ContentView: View {
             }
         }
         .animation(SB.Anim.springGentle, value: showEditor)
+        .onAppear {
+            if showEditor && editorSettings == nil {
+                editorSettings = EditorSettingsController(project: project)
+            }
+        }
         .onChange(of: showEditor) { _, isEditor in
             if isEditor {
                 editorSettings = EditorSettingsController(project: project)
@@ -46,14 +51,15 @@ struct ContentView: View {
                         project.closeProject()
                     }
                     .disabled(project.isClosingProject)
+                    .accessibilityIdentifier("editor_back_button")
 
                     Spacer()
 
                     // Export button
-                    if !project.isLoadingProject {
-                        exportButton
-                    }
+                if !project.isLoadingProject {
+                    exportButton
                 }
+            }
                 .padding(.horizontal, SB.Space.md)
                 .padding(.vertical, SB.Space.sm)
                 .background(.ultraThinMaterial)
@@ -83,6 +89,7 @@ struct ContentView: View {
                     .frame(width: SB.Layout.controlPanelWidth)
             }
         }
+        // NOTE: No .accessibilityIdentifier on container — propagates to all children in XCUI
     }
 
     private var loadingPlaceholder: some View {
@@ -97,6 +104,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SB.Colors.background)
+        .accessibilityIdentifier("editor_loading_placeholder")
     }
 
     private var exportButton: some View {
@@ -114,6 +122,7 @@ struct ContentView: View {
                 SBPrimaryButton(title: "Export", icon: "square.and.arrow.up") {
                     exportPanelManager.show(project: project)
                 }
+                .accessibilityIdentifier("editor_export_button")
             }
         }
     }

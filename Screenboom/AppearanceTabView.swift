@@ -9,21 +9,25 @@ struct AppearanceTabView: View {
             SBGlassCard {
                 backgroundSection
             }
+            .accessibilityIdentifier("appearance_background_section")
 
             // Frame
             SBGlassCard {
                 frameSection
             }
+            .accessibilityIdentifier("appearance_frame_section")
 
             // Layout
             SBGlassCard {
                 layoutSection
             }
+            .accessibilityIdentifier("appearance_layout_section")
 
             // Shadow
             SBGlassCard {
                 shadowSection
             }
+            .accessibilityIdentifier("appearance_shadow_section")
         }
     }
 

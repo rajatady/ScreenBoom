@@ -11,11 +11,13 @@ struct CursorTabView: View {
             SBGlassCard {
                 cursorSection
             }
+            .accessibilityIdentifier("cursor_section")
 
             // Click Effect
             SBGlassCard {
                 clickEffectSection
             }
+            .accessibilityIdentifier("cursor_click_effect_section")
         }
     }
 

@@ -12,6 +12,7 @@ import AppKit
 // - Speed changes not applying
 // - Duration mismatch between preview and export
 
+@MainActor
 struct ExportPipelineTests {
 
     // MARK: - Helpers
