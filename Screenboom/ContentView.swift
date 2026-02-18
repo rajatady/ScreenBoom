@@ -46,14 +46,15 @@ struct ContentView: View {
                         project.closeProject()
                     }
                     .disabled(project.isClosingProject)
+                    .accessibilityIdentifier("editor_back_button")
 
                     Spacer()
 
                     // Export button
-                    if !project.isLoadingProject {
-                        exportButton
-                    }
+                if !project.isLoadingProject {
+                    exportButton
                 }
+            }
                 .padding(.horizontal, SB.Space.md)
                 .padding(.vertical, SB.Space.sm)
                 .background(.ultraThinMaterial)
@@ -75,14 +76,17 @@ struct ContentView: View {
 
                     TimelineView(project: project)
                         .frame(height: project.hasCursorData ? SB.Layout.timelineHeightWithZoom : SB.Layout.timelineHeight)
+                        .accessibilityIdentifier("editor_timeline")
                 }
             }
 
             if let settings = editorSettings, !project.isLoadingProject, !project.isClosingProject {
                 ControlsPanel(controller: settings)
                     .frame(width: SB.Layout.controlPanelWidth)
+                    .accessibilityIdentifier("editor_controls_panel")
             }
         }
+        .accessibilityIdentifier("editor_root")
     }
 
     private var loadingPlaceholder: some View {
@@ -97,6 +101,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SB.Colors.background)
+        .accessibilityIdentifier("editor_loading_placeholder")
     }
 
     private var exportButton: some View {
@@ -114,6 +119,7 @@ struct ContentView: View {
                 SBPrimaryButton(title: "Export", icon: "square.and.arrow.up") {
                     exportPanelManager.show(project: project)
                 }
+                .accessibilityIdentifier("editor_export_button")
             }
         }
     }

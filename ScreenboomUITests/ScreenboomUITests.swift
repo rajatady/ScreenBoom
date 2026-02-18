@@ -1,39 +1,50 @@
-//
-//  ScreenboomUITests.swift
-//  ScreenboomUITests
-//
-//  Created by Kumar Divya  Rajat on 16/02/26.
-//
-
 import XCTest
 
 final class ScreenboomUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    private func launchApp(mode: String = "welcome") -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchEnvironment["SCREENBOOM_UI_TEST_MODE"] = mode
         app.launch()
+        return app
+    }
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    @MainActor
+    func testWelcomeEmptyStateElementsExist() throws {
+        let app = launchApp()
+
+        XCTAssertTrue(app.buttons["Import Video"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Record Screen"].exists)
+    }
+
+    @MainActor
+    func testEditorHarnessShowsCorePanels() throws {
+        let app = launchApp(mode: "editor")
+
+        XCTAssertTrue(app.buttons["editor_back_button"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editor_export_button"].exists)
+        XCTAssertTrue(app.buttons["Split"].exists)
+    }
+
+    @MainActor
+    func testExportPanelOpenAndClose() throws {
+        let app = launchApp(mode: "editor")
+
+        let exportButton = app.buttons["editor_export_button"]
+        XCTAssertTrue(exportButton.waitForExistence(timeout: 5))
+        exportButton.tap()
+
+        let confirmButton = app.buttons["Export MP4"]
+        XCTAssertTrue(confirmButton.waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }

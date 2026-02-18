@@ -154,6 +154,7 @@ struct TimelineView: View {
                 .padding(.vertical, SB.Space.xs + 2) // sb-exempt — micro-adjust for native controls
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .accessibilityIdentifier("timeline_root")
     }
 
     // MARK: - Unified timeline interaction
@@ -273,6 +274,7 @@ struct TimelineView: View {
             .font(SB.Typo.captionMedium)
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .accessibilityIdentifier("timeline_split_button")
 
             if let selectedId = project.selectedSegmentId,
                let seg = project.segments.first(where: { $0.id == selectedId }) {

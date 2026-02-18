@@ -70,6 +70,7 @@ struct WelcomeView: View {
                     Text("Screenboom")
                         .font(SB.Typo.heroTitle)
                         .foregroundStyle(SB.Colors.textPrimary)
+                        .accessibilityIdentifier("welcome_title")
 
                     Text("Make your screen recordings look professional")
                         .font(SB.Typo.subtitle)
@@ -83,9 +84,11 @@ struct WelcomeView: View {
                 SBPrimaryButton(title: "Import Video", icon: "square.and.arrow.down", width: 180) {
                     showingImporter = true
                 }
+                .accessibilityIdentifier("welcome_import_button")
                 SBSecondaryButton(title: "Record Screen", icon: "record.circle") {
                     showRecorder()
                 }
+                .accessibilityIdentifier("welcome_record_button")
             }
 
             Spacer()
@@ -98,7 +101,9 @@ struct WelcomeView: View {
             }
             .foregroundStyle(SB.Colors.textTertiary)
             .padding(.bottom, SB.Space.xl)
+            .accessibilityIdentifier("welcome_drop_hint")
         }
+        .accessibilityIdentifier("welcome_empty_state")
     }
 
     // MARK: - Projects Grid
@@ -109,6 +114,7 @@ struct WelcomeView: View {
                 Text("Recent Projects")
                     .font(SB.Typo.pageTitle)
                     .foregroundStyle(SB.Colors.textPrimary)
+                    .accessibilityIdentifier("welcome_recent_projects_title")
 
                 Spacer()
 

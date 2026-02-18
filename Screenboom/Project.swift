@@ -176,6 +176,8 @@ final class Project {
     var currentProjectID: UUID?
     var store: ProjectStore?
     var onVideoLoaded: ((UUID, CGSize, Double) -> Void)?
+    private let stateStore: any ProjectStateStoreProtocol
+    private let exportService: any ExportServiceProtocol
 
     var isExporting: Bool = false
     var exportProgress: Double = 0
@@ -399,7 +401,10 @@ final class Project {
         segments.filter(\.isEnabled).reduce(0) { $0 + $1.outputDuration }
     }
 
-    init() {}
+    init(dependencies: ProjectDependencies = .live) {
+        self.stateStore = dependencies.stateStore
+        self.exportService = dependencies.exportService
+    }
 
     // MARK: - Persistence
 
@@ -519,7 +524,7 @@ final class Project {
             zoomRegions: savedZoomRegions
         )
         guard let projectID = currentProjectID, let store else { return }
-        state.write(to: store.stateFileURL(for: projectID))
+        stateStore.saveState(state, to: store.stateFileURL(for: projectID))
     }
 
     // MARK: - Multi-Project
@@ -530,7 +535,7 @@ final class Project {
 
         let stateURL = store.stateFileURL(for: info.id)
         logger.warning("loadProject: attempting to load state from \(stateURL.path)")
-        guard let state = SavedState.load(from: stateURL) else {
+        guard let state = stateStore.loadState(from: stateURL) else {
             logger.error("loadProject: FAILED — state file missing or undecodable at \(stateURL.path)")
             return
         }
@@ -1398,7 +1403,7 @@ final class Project {
         }
     }
 
-    private func runExport(to url: URL) async {
+    func runExport(to url: URL) async {
         isExporting = true
         exportProgress = 0
 
@@ -1408,30 +1413,14 @@ final class Project {
             return
         }
 
-        let composition = CompositionEngine.buildComposition(asset: asset, segments: enabledSegments)
-
-        // Build cursor state remapped to composition timeline for export
-        var exportCursorState: CursorOverlayState?
-        if let cursorState = cursorOverlayState {
-            let remapTable = CompositionEngine.buildTimeRemapTable(segments: enabledSegments)
-            exportCursorState = CursorOverlayEngine.remapForExport(state: cursorState, remapTable: remapTable)
-        }
-
-        let videoComp = FrameRenderer.makeVideoComposition(
-            for: composition,
-            sourceSize: videoSize,
-            settings: exportSettings,
-            cursorOverlayState: exportCursorState
-        )
-
-        let outputSize = exportSettings.outputSize
-
         do {
-            try await CompositionEngine.export(
-                composition: composition,
-                videoComposition: videoComp,
-                outputSize: outputSize,
-                to: url
+            try await exportService.export(
+                asset: asset,
+                enabledSegments: enabledSegments,
+                sourceSize: videoSize,
+                exportSettings: exportSettings,
+                cursorOverlayState: cursorOverlayState,
+                outputURL: url
             ) { [weak self] progress in
                 Task { @MainActor in
                     self?.exportProgress = progress
