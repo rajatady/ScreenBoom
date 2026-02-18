@@ -28,6 +28,11 @@ struct ContentView: View {
             }
         }
         .animation(SB.Anim.springGentle, value: showEditor)
+        .onAppear {
+            if showEditor && editorSettings == nil {
+                editorSettings = EditorSettingsController(project: project)
+            }
+        }
         .onChange(of: showEditor) { _, isEditor in
             if isEditor {
                 editorSettings = EditorSettingsController(project: project)
@@ -83,7 +88,6 @@ struct ContentView: View {
             if let settings = editorSettings, !project.isLoadingProject, !project.isClosingProject {
                 ControlsPanel(controller: settings)
                     .frame(width: SB.Layout.controlPanelWidth)
-                    .accessibilityIdentifier("editor_controls_panel")
             }
         }
         .accessibilityIdentifier("editor_root")

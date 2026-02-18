@@ -25,6 +25,7 @@ struct AppearanceTabView: View {
                 shadowSection
             }
         }
+        .accessibilityIdentifier("appearance_tab_root")
     }
 
     // MARK: - Background

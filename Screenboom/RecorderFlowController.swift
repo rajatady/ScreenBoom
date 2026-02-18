@@ -5,6 +5,45 @@ import os
 
 private let flowLog = Logger(subsystem: "com.trymagically.Screenboom", category: "RecorderFlow")
 
+@MainActor
+protocol RecorderServiceProtocol: AnyObject {
+    var state: ScreenRecorder.State { get }
+    var availableDisplays: [SCDisplay] { get }
+    var availableWindows: [SCWindow] { get }
+
+    var captureMode: CaptureMode { get set }
+    var selectedDisplay: SCDisplay? { get set }
+    var selectedWindow: SCWindow? { get set }
+    var selectedRegion: CGRect? { get set }
+    var frameRate: Int { get set }
+    var enableCursorTracking: Bool { get set }
+
+    func requestPermission() async
+    func refreshWindows() async
+    func startRecording() async
+    func stopRecording() async
+    func reset()
+}
+
+extension ScreenRecorder: RecorderServiceProtocol {}
+
+@MainActor
+protocol RegionSelectorManaging: AnyObject {
+    func startSelection(onSelected: @escaping (CGRect) -> Void, onCancelled: (() -> Void)?)
+    func forceClose()
+}
+
+extension RegionSelectorManager: RegionSelectorManaging {}
+
+@MainActor
+protocol CountdownPanelManaging: AnyObject {
+    func show(on screen: NSScreen)
+    func updateCount(_ count: Int)
+    func dismiss()
+}
+
+extension CountdownPanelManager: CountdownPanelManaging {}
+
 // MARK: - Recorder Flow Controller
 
 /// Orchestrates the recording flow: permission -> configuration -> [region selection] -> countdown -> recording -> completion.
@@ -75,13 +114,27 @@ final class RecorderFlowController {
 
     // MARK: - Private
 
-    private let recorder = ScreenRecorder()
-    private let regionSelector = RegionSelectorManager()
-    private var countdownPanel: CountdownPanelManager?
+    private let recorder: any RecorderServiceProtocol
+    private let regionSelector: any RegionSelectorManaging
+    private let countdownPanelFactory: () -> any CountdownPanelManaging
+    private var countdownPanel: (any CountdownPanelManaging)?
     private var countdownTimer: Timer?
     private var durationTimer: Timer?
     private var recordingStartDate: Date?
     private var isTearingDown = false
+    var countdownTickInterval: TimeInterval = 1.0
+    var durationTickInterval: TimeInterval = 0.1
+    var countdownStepScheduler: ((TimeInterval, @escaping () -> Void) -> Void)?
+
+    init(
+        recorder: any RecorderServiceProtocol = ScreenRecorder(),
+        regionSelector: any RegionSelectorManaging = RegionSelectorManager(),
+        countdownPanelFactory: @escaping () -> any CountdownPanelManaging = { CountdownPanelManager() }
+    ) {
+        self.recorder = recorder
+        self.regionSelector = regionSelector
+        self.countdownPanelFactory = countdownPanelFactory
+    }
 
     // MARK: - Permission
 
@@ -146,12 +199,13 @@ final class RecorderFlowController {
 
         if count == 3 {
             let screen = targetScreen()
-            countdownPanel = CountdownPanelManager()
-            countdownPanel?.show(on: screen)
+            let panel = countdownPanelFactory()
+            panel.show(on: screen)
+            countdownPanel = panel
         }
         countdownPanel?.updateCount(count)
 
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+        let tick: () -> Void = { [weak self] in
             guard let self else { return }
             if count > 1 {
                 self.startCountdown(from: count - 1)
@@ -159,6 +213,17 @@ final class RecorderFlowController {
                 self.countdownPanel?.dismiss()
                 self.countdownPanel = nil
                 self.beginActualRecording()
+            }
+        }
+
+        if let countdownStepScheduler {
+            countdownStepScheduler(countdownTickInterval, tick)
+            return
+        }
+
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: countdownTickInterval, repeats: false) { _ in
+            Task { @MainActor in
+                tick()
             }
         }
     }
@@ -246,7 +311,7 @@ final class RecorderFlowController {
     // MARK: - Helpers
 
     private func startDurationTimer() {
-        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        durationTimer = Timer.scheduledTimer(withTimeInterval: durationTickInterval, repeats: true) { [weak self] _ in
             guard let self, let start = self.recordingStartDate else { return }
             self.recordingDuration = Date().timeIntervalSince(start)
         }
@@ -281,4 +346,14 @@ final class RecorderFlowController {
         }
         return NSScreen.main ?? NSScreen.screens[0]
     }
+
+#if DEBUG
+    func _setFlowStateForTesting(_ state: FlowState) {
+        flowState = state
+    }
+
+    func _setSelectedRegionForTesting(_ region: CGRect?) {
+        selectedRegion = region
+    }
+#endif
 }

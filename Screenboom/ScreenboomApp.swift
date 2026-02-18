@@ -62,7 +62,7 @@ struct ScreenboomApp: App {
         guard let mode = ProcessInfo.processInfo.environment["SCREENBOOM_UI_TEST_MODE"] else { return }
 
         switch mode {
-        case "editor":
+        case "editor", "editor_cursor":
             project.currentProjectID = UUID()
             project.videoSize = CGSize(width: 1920, height: 1080)
             project.duration = CMTime(seconds: 12, preferredTimescale: 600)
@@ -74,6 +74,29 @@ struct ScreenboomApp: App {
             project.playheadTime = 2
             project.isLoadingProject = false
             project.isClosingProject = false
+
+            if mode == "editor_cursor" {
+                let metadata = CursorMetadataFile(
+                    frameRate: 60,
+                    sourceSize: .init(width: 1920, height: 1080),
+                    captureOrigin: .init(x: 0, y: 0),
+                    displayHeight: 1080,
+                    backingScaleFactor: 1.0,
+                    events: [
+                        CursorEvent(timestamp: 0.5, x: 320, y: 720, type: .move, button: nil),
+                        CursorEvent(timestamp: 1.0, x: 360, y: 690, type: .click, button: .left),
+                        CursorEvent(timestamp: 1.6, x: 540, y: 500, type: .keyDown, button: nil),
+                        CursorEvent(timestamp: 2.2, x: 1280, y: 360, type: .move, button: nil),
+                    ]
+                )
+                let metadataURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("screenboom-uitest-cursor-\(UUID().uuidString).json")
+                if let data = try? JSONEncoder().encode(metadata) {
+                    try? data.write(to: metadataURL, options: .atomic)
+                    project.cursorMetadataURL = metadataURL
+                    project.loadCursorMetadata()
+                }
+            }
         case "welcome":
             project.currentProjectID = nil
             project.sourceURL = nil

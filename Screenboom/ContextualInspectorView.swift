@@ -9,12 +9,15 @@ struct ContextualInspectorView: View {
         VStack(spacing: 0) {
             if let region = controller.selectedZoomRegion {
                 zoomRegionInspector(region: region)
+                    .accessibilityIdentifier("inspector_zoom_region")
                     .transition(.move(edge: .top).combined(with: .opacity))
             } else if let segment = controller.selectedSegment {
                 segmentInspector(segment: segment)
+                    .accessibilityIdentifier("inspector_segment")
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .accessibilityIdentifier("contextual_inspector_root")
         .animation(SB.Anim.springSnappy, value: controller.selectedZoomRegion?.id)
         .animation(SB.Anim.springSnappy, value: controller.selectedSegment?.id)
     }

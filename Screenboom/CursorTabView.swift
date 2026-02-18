@@ -17,6 +17,7 @@ struct CursorTabView: View {
                 clickEffectSection
             }
         }
+        .accessibilityIdentifier("cursor_tab_root")
     }
 
     // MARK: - Cursor

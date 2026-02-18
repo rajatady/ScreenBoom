@@ -11,6 +11,7 @@ struct ZoomTabView: View {
                 autoZoomSection
             }
         }
+        .accessibilityIdentifier("zoom_tab_root")
     }
 
     // MARK: - Auto Zoom
