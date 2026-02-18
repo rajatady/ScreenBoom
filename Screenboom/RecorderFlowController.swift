@@ -29,7 +29,7 @@ extension ScreenRecorder: RecorderServiceProtocol {}
 
 @MainActor
 protocol RegionSelectorManaging: AnyObject {
-    func startSelection(onSelected: @escaping (CGRect) -> Void, onCancelled: (() -> Void)?)
+    func startSelection(onSelected: @escaping (CGRect, NSScreen) -> Void, onCancelled: (() -> Void)?)
     func forceClose()
 }
 
@@ -165,11 +165,13 @@ final class RecorderFlowController {
         guard flowState == .configuring || flowState == .selectingRegion else { return }
         flowState = .selectingRegion
         regionSelector.startSelection(
-            onSelected: { [weak self] rect in
+            onSelected: { [weak self] rect, screen in
                 guard let self, !self.isTearingDown else { return }
                 self.selectedRegion = rect
+                // Match the NSScreen to an SCDisplay so recording targets the correct display
+                self.matchDisplayToScreen(screen)
                 self.flowState = .configuring
-                flowLog.info("Region selected: \(rect.debugDescription)")
+                flowLog.info("Region selected: \(rect.debugDescription) on screen: \(screen.localizedName)")
             },
             onCancelled: { [weak self] in
                 guard let self, !self.isTearingDown else { return }
@@ -310,6 +312,20 @@ final class RecorderFlowController {
 
     // MARK: - Helpers
 
+    /// Match an NSScreen to the corresponding SCDisplay and update `selectedDisplay`.
+    private func matchDisplayToScreen(_ screen: NSScreen) {
+        guard let screenID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32 else {
+            flowLog.warning("Could not get screen ID for \(screen.localizedName)")
+            return
+        }
+        if let match = availableDisplays.first(where: { $0.displayID == screenID }) {
+            selectedDisplay = match
+            flowLog.info("Matched region to display \(match.displayID) (\(screen.localizedName))")
+        } else {
+            flowLog.warning("No SCDisplay found for screen ID \(screenID)")
+        }
+    }
+
     private func startDurationTimer() {
         durationTimer = Timer.scheduledTimer(withTimeInterval: durationTickInterval, repeats: true) { [weak self] _ in
             guard let self, let start = self.recordingStartDate else { return }
@@ -354,6 +370,10 @@ final class RecorderFlowController {
 
     func _setSelectedRegionForTesting(_ region: CGRect?) {
         selectedRegion = region
+    }
+
+    func _setCountdownPanelForTesting(_ panel: any CountdownPanelManaging) {
+        countdownPanel = panel
     }
 #endif
 }

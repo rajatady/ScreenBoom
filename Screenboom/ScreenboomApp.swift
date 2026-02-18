@@ -7,6 +7,7 @@ struct ScreenboomApp: App {
     @State private var project: Project
     @State private var recorderPanelManager = RecorderPanelManager()
     @State private var exportPanelManager = ExportPanelManager()
+    @State private var testRecorderFlow: RecorderFlowController?
 
     init() {
         let environment = ProcessInfo.processInfo.environment
@@ -25,11 +26,36 @@ struct ScreenboomApp: App {
         let project = container.makeProject()
         Self.bootstrapUITestStateIfNeeded(project, store: container.projectStore)
         _project = State(initialValue: project)
+
+        // Recorder harness: embed RecorderBarView directly in main window
+        // (NSPanel is outside XCUI accessibility tree)
+        if let flow = Self.makeRecorderFlowIfNeeded() {
+            _testRecorderFlow = State(initialValue: flow)
+        }
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(project: project, store: container.projectStore)
+            ZStack {
+                if let flow = testRecorderFlow {
+                    // UI test harness: embed RecorderBarView directly in main window
+                    // (NSPanel is outside XCUI accessibility tree)
+                    VStack {
+                        Spacer()
+                        RecorderBarView(
+                            flow: flow,
+                            onComplete: { _ in },
+                            onDismiss: {}
+                        )
+                        .padding()
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .sbPageBackground()
+                } else {
+                    ContentView(project: project, store: container.projectStore)
+                }
+            }
                 .frame(minWidth: 1100, minHeight: 700)
                 .environment(recorderPanelManager)
                 .environment(exportPanelManager)
@@ -108,6 +134,40 @@ struct ScreenboomApp: App {
 
         default:
             return
+        }
+    }
+
+    // MARK: - Recorder Harness
+
+    /// Creates a RecorderFlowController pre-set to a specific state for UI testing.
+    /// Returns nil for non-recorder modes.
+    private static func makeRecorderFlowIfNeeded() -> RecorderFlowController? {
+        guard let mode = ProcessInfo.processInfo.environment["SCREENBOOM_UI_TEST_MODE"] else { return nil }
+
+        switch mode {
+        case "recorder_configuring":
+            let flow = RecorderFlowController()
+            flow._setFlowStateForTesting(.configuring)
+            flow.captureMode = .display
+            return flow
+
+        case "recorder_recording":
+            let flow = RecorderFlowController()
+            flow._setFlowStateForTesting(.recording)
+            return flow
+
+        case "recorder_countdown":
+            let flow = RecorderFlowController()
+            flow._setFlowStateForTesting(.countdown(3))
+            return flow
+
+        case "recorder_failed":
+            let flow = RecorderFlowController()
+            flow._setFlowStateForTesting(.failed("Screen recording permission denied"))
+            return flow
+
+        default:
+            return nil
         }
     }
 

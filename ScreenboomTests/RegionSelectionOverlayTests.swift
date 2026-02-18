@@ -15,13 +15,14 @@ struct RegionSelectionOverlayTests {
 
     private func makeHarness(
         screenSize: CGSize = CGSize(width: 800, height: 600),
-        initialSize: CGSize = CGSize(width: 200, height: 120)
+        fallbackSize: CGSize = CGSize(width: 200, height: 120)
     ) -> (view: RegionSelectionView, window: NSWindow, callback: CallbackBox) {
         let callback = CallbackBox()
         let view = RegionSelectionView(
             frame: NSRect(origin: .zero, size: screenSize),
             screenSize: screenSize,
-            initialSize: initialSize,
+            initialRect: nil,
+            fallbackSize: fallbackSize,
             onSelected: { rect in callback.selectedRect = rect },
             onCancelled: { callback.cancelCount += 1 }
         )
@@ -98,7 +99,7 @@ struct RegionSelectionOverlayTests {
     }
 
     @Test func resizeViaCornerEnforcesMinimumSizeAndClampsToBounds() async {
-        let harness = makeHarness(screenSize: CGSize(width: 800, height: 600), initialSize: CGSize(width: 200, height: 120))
+        let harness = makeHarness(screenSize: CGSize(width: 800, height: 600), fallbackSize: CGSize(width: 200, height: 120))
         defer { tearDownHarness(harness) }
 
         // Default centered rect for this harness is x:300 y:240 width:200 height:120 (view coordinates).

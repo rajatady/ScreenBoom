@@ -64,10 +64,10 @@ struct RecorderFlowControllerTests {
     final class MockRegionSelector: RegionSelectorManaging {
         var startCalls = 0
         var forceCloseCalls = 0
-        private var onSelected: ((CGRect) -> Void)?
+        private var onSelected: ((CGRect, NSScreen) -> Void)?
         private var onCancelled: (() -> Void)?
 
-        func startSelection(onSelected: @escaping (CGRect) -> Void, onCancelled: (() -> Void)?) {
+        func startSelection(onSelected: @escaping (CGRect, NSScreen) -> Void, onCancelled: (() -> Void)?) {
             startCalls += 1
             self.onSelected = onSelected
             self.onCancelled = onCancelled
@@ -77,8 +77,8 @@ struct RecorderFlowControllerTests {
             forceCloseCalls += 1
         }
 
-        func emitSelection(_ rect: CGRect) {
-            onSelected?(rect)
+        func emitSelection(_ rect: CGRect, screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) {
+            onSelected?(rect, screen)
         }
 
         func emitCancel() {

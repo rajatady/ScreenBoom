@@ -222,6 +222,7 @@ struct RecorderBarView: View {
         }
         .buttonStyle(.plain)
         .disabled(!flow.canStart)
+        .accessibilityIdentifier("recorder_start_button")
     }
 
     // MARK: - Countdown
@@ -237,12 +238,14 @@ struct RecorderBarView: View {
             Text("Recording starts in \(count)...")
                 .font(SB.Typo.bodyMedium)
                 .foregroundStyle(SB.Colors.textSecondary)
+                .accessibilityIdentifier("recorder_countdown_label")
 
             thinDivider
 
             SBIconButton(icon: "xmark", size: 26) {
                 flow.cancelCountdown()
             }
+            .accessibilityIdentifier("recorder_cancel_countdown")
         }
         .animation(SB.Anim.countTick, value: count)
     }
@@ -257,6 +260,7 @@ struct RecorderBarView: View {
                 .font(SB.Typo.timerSm)
                 .foregroundStyle(SB.Colors.textPrimary)
                 .contentTransition(.numericText())
+                .accessibilityIdentifier("recorder_duration_label")
 
             thinDivider
 
@@ -279,6 +283,7 @@ struct RecorderBarView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("recorder_stop_button")
         }
     }
 
@@ -317,6 +322,7 @@ struct RecorderBarView: View {
             .font(SB.Typo.label)
             .foregroundStyle(SB.Colors.accent)
             .buttonStyle(.plain)
+            .accessibilityIdentifier("recorder_retry_button")
 
             closeButton
         }
@@ -328,6 +334,7 @@ struct RecorderBarView: View {
         SBIconButton(icon: "xmark", size: 26) {
             onDismiss()
         }
+        .accessibilityIdentifier("recorder_close_button")
     }
 
     private var thinDivider: some View {
