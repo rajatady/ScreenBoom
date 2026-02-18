@@ -103,7 +103,6 @@ struct WelcomeView: View {
             .padding(.bottom, SB.Space.xl)
             .accessibilityIdentifier("welcome_drop_hint")
         }
-        .accessibilityIdentifier("welcome_empty_state")
     }
 
     // MARK: - Projects Grid

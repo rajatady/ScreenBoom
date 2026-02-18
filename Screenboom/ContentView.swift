@@ -81,7 +81,6 @@ struct ContentView: View {
 
                     TimelineView(project: project)
                         .frame(height: project.hasCursorData ? SB.Layout.timelineHeightWithZoom : SB.Layout.timelineHeight)
-                        .accessibilityIdentifier("editor_timeline")
                 }
             }
 
@@ -90,7 +89,7 @@ struct ContentView: View {
                     .frame(width: SB.Layout.controlPanelWidth)
             }
         }
-        .accessibilityIdentifier("editor_root")
+        // NOTE: No .accessibilityIdentifier on container — propagates to all children in XCUI
     }
 
     private var loadingPlaceholder: some View {

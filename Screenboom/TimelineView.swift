@@ -154,7 +154,6 @@ struct TimelineView: View {
                 .padding(.vertical, SB.Space.xs + 2) // sb-exempt — micro-adjust for native controls
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .accessibilityIdentifier("timeline_root")
     }
 
     // MARK: - Unified timeline interaction
@@ -286,12 +285,13 @@ struct TimelineView: View {
                 .font(SB.Typo.captionMedium)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .accessibilityIdentifier("timeline_toggle_button")
 
                 HStack(spacing: SB.Space.xs) {
                     Text("Speed:")
                         .font(SB.Typo.caption)
                         .foregroundStyle(SB.Colors.textSecondary)
-                    Picker("", selection: Binding(
+                    Picker("Speed", selection: Binding(
                         get: { seg.speed },
                         set: { project.setSpeed($0, for: selectedId) }
                     )) {
@@ -314,6 +314,7 @@ struct TimelineView: View {
                     }
                     .pickerStyle(.menu)
                     .frame(width: SB.Layout.speedPickerWidth)
+                    .accessibilityIdentifier("timeline_speed_picker")
                 }
 
                 if let splitIdx = splitIndexForSegment(selectedId) {
@@ -324,6 +325,7 @@ struct TimelineView: View {
                     .font(SB.Typo.captionMedium)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .accessibilityIdentifier("timeline_remove_split_button")
                 }
             }
 
@@ -361,6 +363,7 @@ struct TimelineView: View {
             Text(String(format: "%.1fs", project.totalOutputDuration))
                 .font(SB.Typo.mono)
                 .foregroundStyle(SB.Colors.textSecondary)
+                .accessibilityIdentifier("timeline_total_duration")
         }
     }
 
@@ -532,6 +535,7 @@ struct TimelineView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .accessibilityIdentifier("timeline_play_button")
 
             let dur = project.duration.seconds
             let current = min(project.currentTime, dur)

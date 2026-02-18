@@ -105,6 +105,7 @@ struct ExportPopupView: View {
                         .background(Circle().fill(SB.Glass.subtle))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close export")
                 .accessibilityIdentifier("export_popup_close_button")
             }
 

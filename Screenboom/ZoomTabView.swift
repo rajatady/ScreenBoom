@@ -10,8 +10,8 @@ struct ZoomTabView: View {
             SBGlassCard {
                 autoZoomSection
             }
+            .accessibilityIdentifier("zoom_auto_section")
         }
-        .accessibilityIdentifier("zoom_tab_root")
     }
 
     // MARK: - Auto Zoom
